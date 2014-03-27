@@ -1,0 +1,6 @@
+#!/bin/bash
+
+# Leave only whitespace changes in a commit
+# Useful if while you fix something you make some indentation fixes elsewhere in the file, and you want to commit the indentation fixes first in a separate commit
+
+git apply --cached -R <(git diff --cached -w)
