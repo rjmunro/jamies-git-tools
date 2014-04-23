@@ -1,0 +1,5 @@
+#!/bin/bash
+for i in ~/*/.git ~/*/*/.git
+do
+dirname $i
+done
