@@ -1,0 +1,10 @@
+#!/bin/bash
+set -eux
+if [ $# -eq 0 ]
+  then
+  BRANCH=$(git rev-parse --abbrev-ref HEAD)
+else
+  BRANCH="$1"
+fi
+while [ "$(hub ci-status $BRANCH)" = "pending" ]; do echo "pending"; sleep 15; done
+/usr/bin/osascript -e "display notification \"Branch $BRANCH CI Status: `hub ci-status $BRANCH`\" with title \"CI Status\""
