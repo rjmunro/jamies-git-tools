@@ -1,10 +1,57 @@
 #!/bin/bash
-set -eu
+set -euo pipefail
+# watch-ci - Watch the CI status of a branch and notify when it's done
+# Usage: watch-ci [branch]
+# If no branch is specified, it will use the current branch
+# Requires: hub (https://github.com/github/hub)
+# Uses osascript and say from macOS to display notifications and speak the status
+# Requires: notify-send or zenity for Linux to display notifications
 if [ $# -eq 0 ]
 then
   BRANCH=$(git rev-parse --abbrev-ref HEAD)
 else
   BRANCH="$1"
 fi
-while [ "$(hub ci-status $BRANCH)" = "pending" ]; do echo "pending"; sleep 15; done
-/usr/bin/osascript -e "display notification \"Branch $BRANCH CI Status: `hub ci-status $BRANCH`\" with title \"CI Status\""
+
+SHORT_BRANCH="${BRANCH#rjmunro/}"
+
+EXIT_CODE=0
+STATUS=$(hub ci-status "$BRANCH" || EXIT_CODE=$?)
+
+# ALlow one retry if the status is not available
+if [ "$STATUS" = "no status" ]; then
+  echo "$STATUS ($BRANCH)"
+  sleep 15
+  STATUS=$(hub ci-status "$BRANCH" || EXIT_CODE=$?)
+fi
+
+# Keep checking the status until it is no longer pending
+while [ "$STATUS" = "pending" ]; do
+  echo "$STATUS ($BRANCH)"
+  sleep 15
+  STATUS=$(hub ci-status "$BRANCH" || EXIT_CODE=$?)
+done
+
+echo "$STATUS ($BRANCH)"
+
+# If we are on MacOS, use osascript to display a notification and say to speak say the status
+if [ "$(uname)" = "Darwin" ]; then
+  /usr/bin/osascript -e "display notification \"Branch $SHORT_BRANCH CI Status: $STATUS\" with title \"CI Status\""
+  say "CI done on branch $SHORT_BRANCH. Status: $STATUS"
+  exit $EXIT_CODE
+fi
+
+# If notify-send is available, use it to display a notification
+if command -v notify-send &> /dev/null; then
+  notify-send "Branch $SHORT_BRANCH CI Status: $STATUS" "CI Status"
+
+# If notify-send is not available, use zenity to display a notification
+elif ! command -v notify-send &> /dev/null; then
+  zenity --notification --text "Branch $SHORT_BRANCH CI Status: $STATUS" --title "CI Status"
+
+# If we are on Windows, use PowerShell to display a notification
+elif [ "$(uname)" = "MINGW64_NT-10.0" ]; then
+  powershell -Command "New-BurntToastNotification -Text 'Branch $SHORT_BRANCH CI Status: $STATUS'"
+  powershell -Command "Add-Type -AssemblyName System.Speech; (New-Object System.Speech.Synthesis.SpeechSynthesizer).Speak('CI done on branch $SHORT_BRANCH. Status: $STATUS')"
+fi
+exit $EXIT_CODE
