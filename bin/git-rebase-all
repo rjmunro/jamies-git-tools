@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # Usage: ./list_tip_branches.sh [--skip-pushed] [base-branch]
-SKIP_PUSHED=false
+SKIP_PUSHED=true
 BASE_BRANCH=""
 
 # List of possible default base branches in order
@@ -9,8 +9,8 @@ DEFAULT_BASE_BRANCHES=("develop" "origin/develop" "main" "origin/main" "master" 
 
 # Handle script arguments
 for arg in "$@"; do
-  if [ "$arg" == "--skip-pushed" ]; then
-    SKIP_PUSHED=true
+  if [ "$arg" == "--include-pushed" ]; then
+    SKIP_PUSHED=false
   else
     BASE_BRANCH="$arg"
   fi
