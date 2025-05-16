@@ -33,7 +33,7 @@ fi
 
 echo "# Listing tip branches (base: $BASE_BRANCH; skip pushed: $SKIP_PUSHED)"
 
-git branch --no-merged "$BASE_BRANCH" --sort=-committerdate | while read branch; do
+git branch --no-contains "$BASE_BRANCH" --sort=-committerdate | while read branch; do
   # Trim possible whitespace and "* " around the branch name
   branch=$(echo "$branch" | sed 's/^\* //' | xargs)
   if [ -z "$branch" ]; then
