@@ -31,7 +31,7 @@ if [ -z "$BASE_BRANCH" ]; then
   exit 1
 fi
 
-echo "# Listing tip branches (skip pushed: $SKIP_PUSHED)"
+echo "# Listing tip branches (base: $BASE_BRANCH; skip pushed: $SKIP_PUSHED)"
 
 git branch --no-merged "$BASE_BRANCH" --sort=-committerdate | while read branch; do
   # Trim possible whitespace and "* " around the branch name
