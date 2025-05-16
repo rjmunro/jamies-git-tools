@@ -1,0 +1,47 @@
+#!/bin/bash
+
+# Usage: ./list_tip_branches.sh [--skip-pushed] [base-branch]
+SKIP_PUSHED=false
+BASE_BRANCH="main"
+
+# Handle script arguments
+for arg in "$@"; do
+  if [ "$arg" == "--skip-pushed" ]; then
+    SKIP_PUSHED=true
+  else
+    BASE_BRANCH="$arg"
+  fi
+done
+
+echo "# Listing tip branches (skip pushed: $SKIP_PUSHED)"
+
+git branch --no-merged "$BASE_BRANCH" --sort=-committerdate | while read branch; do
+  # Trim possible whitespace around the branch name
+  branch=$(echo "$branch" | xargs)
+  if [ -z "$branch" ]; then
+    continue
+  fi
+
+  # Skip remote-tracking branches
+  if [[ "$branch" == "remotes/"* ]]; then
+    continue
+  fi
+
+  # Skip branches that are fully pushed if the flag is enabled
+  if [ "$SKIP_PUSHED" = true ]; then
+    remote_status=$(git status -sb --porcelain=2 --branch "$branch" 2>/dev/null | grep "^# branch.upstream")
+
+    if [ -n "$remote_status" ]; then
+      # Check if the branch is fully synced with its upstream
+      if git diff --quiet "$branch"@"{upstream}" "$branch" 2>/dev/null; then
+        echo "# Skipping fully pushed branch: $branch"
+        continue
+      fi
+    fi
+  fi
+
+  # Check if this is a tip branch (not contained by other branches)
+  if [ "$(git branch --contains "$branch" | wc -l)" -eq 1 ]; then
+    echo "git rebase '$BASE_BRANCH' '$branch' || git rebase --abort"
+  fi
+done
