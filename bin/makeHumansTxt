@@ -1,0 +1,12 @@
+#!/bin/bash
+set -eu
+cat <<EOF
+Made by the following team:
+
+EOF
+# Lists authors of a git project in order of commits
+git log --format='* %aN' | awk '{arr[$0]++} END{for (i in arr){print arr[i], i;}}' | sort -rn | gcut -d\  -f2-
+
+cat <<EOF
+
+EOF
