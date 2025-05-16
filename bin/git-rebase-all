@@ -2,7 +2,10 @@
 
 # Usage: ./list_tip_branches.sh [--skip-pushed] [base-branch]
 SKIP_PUSHED=false
-BASE_BRANCH="main"
+BASE_BRANCH=""
+
+# List of possible default base branches in order
+DEFAULT_BASE_BRANCHES=("develop" "origin/develop" "main" "origin/main" "master" "origin/master")
 
 # Handle script arguments
 for arg in "$@"; do
@@ -12,6 +15,21 @@ for arg in "$@"; do
     BASE_BRANCH="$arg"
   fi
 done
+
+# If no base branch specified, find the first existing one
+if [ -z "$BASE_BRANCH" ]; then
+  for candidate in "${DEFAULT_BASE_BRANCHES[@]}"; do
+    if git show-ref --verify --quiet "refs/heads/$candidate" || git show-ref --verify --quiet "refs/remotes/$candidate"; then
+      BASE_BRANCH="$candidate"
+      break
+    fi
+  done
+fi
+
+if [ -z "$BASE_BRANCH" ]; then
+  echo "Error: Could not find a suitable base branch." >&2
+  exit 1
+fi
 
 echo "# Listing tip branches (skip pushed: $SKIP_PUSHED)"
 
