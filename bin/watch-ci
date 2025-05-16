@@ -34,6 +34,9 @@ done
 
 echo "$STATUS ($BRANCH)"
 
+# Open the pull request page in the browser
+hub pr show -h "$BRANCH" || hub compare "$BRANCH"
+
 # If we are on MacOS, use osascript to display a notification and say to speak say the status
 if [ "$(uname)" = "Darwin" ]; then
   /usr/bin/osascript -e "display notification \"Branch $SHORT_BRANCH CI Status: $STATUS\" with title \"CI Status\""
