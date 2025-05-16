@@ -1,5 +1,7 @@
 #!/bin/bash
 set -eu
+IFS='
+'
 for i in ~/*/.git ~/*/*/.git
 do
 dirname $i
