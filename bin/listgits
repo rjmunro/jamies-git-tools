@@ -1,4 +1,5 @@
 #!/bin/bash
+set -eu
 for i in ~/*/.git ~/*/*/.git
 do
 dirname $i

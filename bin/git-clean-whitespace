@@ -1,4 +1,5 @@
 #!/bin/bash
+set -eu
 
 # Clean trailing whitespace from files that have changed
 #for i in `git diff --name-only`
