@@ -1,0 +1,43 @@
+#!/bin/bash
+set -euo pipefail
+
+ROOT="$(git rev-parse --show-toplevel)"
+cd "$ROOT"
+
+# Get list of conflicted files
+conflicted_files=$(git diff --name-only --diff-filter=U -- '*.java')
+
+if [ -z "$conflicted_files" ]; then
+  echo "No conflicted .java files found."
+  exit 0
+fi
+
+for file in $conflicted_files; do
+  echo "Fixing formatting conflict in: $file"
+
+  # Create temporary files
+  base=$(mktemp)
+  theirs=$(mktemp)
+
+  # Extract versions using Git blob syntax
+  git show ":1:$file" > "$file" # base
+  format "$file" # format the file
+  mv "$file" "$base" # base
+
+  git show ":3:$file" > "$file" # theirs
+  format "$file" # format the file
+  mv "$file" "$theirs" # theirs
+
+  # Local version is the current working tree version
+  git show ":2:$file" > "$local"  # ours
+  format "$file" # format the file
+
+
+  # Merge formatted versions (in-place in local)
+  git merge-file -L current -L base -L other "$local" "$base" "$theirs"
+
+  # Clean up
+  rm "$base" "$theirs"
+done
+
+echo "✅ All formatting merge conflicts processed."
