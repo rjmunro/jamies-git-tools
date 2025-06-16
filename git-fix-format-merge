@@ -15,6 +15,46 @@ ROOT="$(git rev-parse --show-toplevel)"
 # Change the current directory to the Git repository root.
 cd "$ROOT"
 
+# --- Define the formatting function ---
+# This function encapsulates the actual formatting commands using Prettier and ESLint.
+# It attempts to format the file using Prettier first, then ESLint if it's a JS/TS file.
+# The first argument ($1) to this function is the path to the file to be formatted.
+# IMPORTANT: This function expects to operate on a file path within the actual Git repository
+# structure, so that Prettier/ESLint can correctly discover their configuration files.
+format_file() {
+  local file_path="$1"
+  local file_extension="${file_path##*.}" # Extract file extension
+
+  echo "  --> Formatting $file_path"
+
+  # Run ESLint --fix for common JavaScript/TypeScript file types
+  # 2>/dev/null redirects stderr to suppress potential errors/warnings from ESLint.
+  case "$file_extension" in
+    js|jsx|ts|tsx|vue)
+      if npx eslint --fix --quiet "$file_path" 2>/dev/null; then
+        echo "    ESLint --fix applied successfully to $file_path"
+      else
+        echo "    Warning: ESLint --fix failed or did not apply to $file_path. Check ESLint configuration or file type."
+      fi
+      ;;
+    *)
+      # ESLint is generally for JS/TS, so skip for other file types
+      echo "    Skipping ESLint for .$file_extension file: $file_path"
+      ;;
+  esac
+
+  # Run Prettier --write
+  # --loglevel silent to avoid noise if a file type isn't supported by Prettier
+  # 2>/dev/null redirects stderr to suppress potential errors/warnings from Prettier
+  # if it doesn't support the file type.
+  if npx prettier --write --loglevel silent "$file_path" 2>/dev/null; then
+    echo "    Prettier applied successfully to $file_path"
+  else
+    echo "    Warning: Prettier failed or did not apply to $file_path. This might be expected for some file types."
+  fi
+}
+
+
 # Get a list of all files that are currently in a merge conflict state (`--diff-filter=U`).
 # We are now checking all conflicted files, and Prettier/ESLint will determine applicability.
 conflicted_files=$(git diff --name-only --diff-filter=U)
