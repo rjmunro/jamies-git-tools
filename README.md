@@ -1,114 +1,66 @@
-Git Java Formatting Conflict Resolver
-=====================================
+# Git Resolve Formatting Conflicts
 
-This repository contains a simple bash script designed to automate the resolution of common Git merge conflicts that arise purely from differences in code formatting within Java files.
+This repository contains a simple bash script designed to automate or partially automate the
+resolution of common Git merge conflicts that arise purely from differences in code formatting
+within source code files, particularly when those differences are due to an automated code
+formatting tool.
 
-Table of Contents
------------------
+## Overview
 
-* [Overview](#overview "null")
-* [How it Works](#how-it-works "null")
-* [Prerequisites](#prerequisites "null")
-* [Usage](#usage "null")
-* [Important Notes](#important-notes "null")
-
-Overview
---------
-
-When merging Git branches, developers often encounter conflicts where the underlying code logic is the same, but the formatting (indentation, line breaks, brace style, etc.) differs between the branches. Manually resolving these "formatting conflicts" can be tedious and time-consuming.
+When merging or rebasing Git branches, particularly a code formatting tool such as prettier has been
+added to the workflow or recently had its configuration changed, developers often encounter
+conflicts where the underlying code logic is the same, but the formatting (indentation, line breaks,
+brace style, etc.) differs between the branches. Manually resolving these "formatting conflicts" can
+be time-consuming and error prone.
 
 This script streamlines this process by:
 
-1. Identifying conflicted `.java` files.
-
-2. Extracting the "base" (common ancestor), "ours" (current branch), and "theirs" (incoming branch) versions of each conflicted file.
-
-3. Applying a specified code formatting tool to all three versions.
-
-4. Performing a three-way merge on these _formatted_ versions, which typically resolves purely formatting-related differences automatically.
-
+1. Identifying conflicted files.
+2. Extracting the "base" (common ancestor), "ours" (current branch), and "theirs" (incoming branch)
+   versions of each conflicted file.
+3. Applying a code formatting tool to all three versions.
+4. Performing a three-way merge on these _formatted_ versions, which typically resolves purely
+   formatting-related differences automatically.
 5. Saving the resolved, formatted file back into your working directory.
+6. Running `git add` on the file if there are no further conflicts
 
-How it Works
-------------
+## Prerequisites
 
-The script leverages Git's ability to extract specific file versions from the merge index (`:1` for base, `:2` for ours, `:3` for theirs). For each conflicted Java file:
+Before running this script, ensure you have configured the ESLint and Prettier code formatters. You
+can use other code formatters if you modify the script - Pull requests are welcome to add support
+for more code formatting tools.
 
-1. It retrieves the content of the base version and stores it in a temporary file (`base_temp`).
+## Installation
 
-2. It retrieves the content of the incoming ("theirs") version and stores it in another temporary file (`theirs_temp`).
+1. **Save the script:** Save the provided bash script (`git-resolve-formatting-conflicts`) or link
+    it to a location on your $PATH (e.g., in a `bin/` folder).
 
-3. It retrieves the content of your current ("ours") version and overwrites the original conflicted file with it.
+2. **Ensure it is executable:**
 
-4. A crucial step is applying a placeholder `format` command (which you must configure to your actual formatter, e.g., `google-java-format -i`) to `base_temp`, `theirs_temp`, and the original `$file` (now containing the formatted "ours" version).
+```bash
+chmod +x git-resolve-formatting-conflicts
+```
 
-5. Finally, `git merge-file` is used to perform a three-way merge with the formatted `ours` version as the target, and `base_temp` and `theirs_temp` as the other inputs. Because all versions have been consistently formatted, trivial formatting differences often disappear, allowing `git merge-file` to resolve them cleanly.
+## Usage
 
-Prerequisites
--------------
+When you have a conflict during a git merge or git rebase operation, run the script:
 
-Before running this script, ensure you have:
+```bash
+git resolve-formatting-conflicts
+```
 
-* **Git:** Installed and configured on your system.
+The script will process all conflicted files. If it successfully resolves a conflict, the file will
+be updated in your working tree, and the resolution will be staged ready to continue the merge. If
+actual logic conflicts remain after formatting, the file will still show merge conflict markers, but
+the surrounding code will be consistently formatted, making manual resolution easier.
 
-* **A Java Code Formatter:** This script _requires_ an external command-line tool that can format Java code in-place. Examples include:
+## Important Notes
 
-  * [Google Java Format](https://github.com/google/google-java-format "null")
+- This script is most effective for conflicts that are _solely_ due to formatting differences.
 
-  * [Prettier (with Java plugin)](https://prettier.io/docs/en/plugins.html#java "null")
+- If genuine code logic conflicts exist alongside formatting differences, the script will still
+  format the code, but `git merge-file` might leave conflict markers for the logical discrepancies.
+  You will then need to resolve these remaining conflicts manually.
 
-  * Any other tool that accepts a file path and modifies the file content according to your coding standards.
-
-Usage
------
-
-1. **Save the script:** Save the provided bash script (e.g., as `resolve_java_formatting_conflicts.sh`) in a convenient location within your Git repository (e.g., at the root or in a `scripts/` directory).
-
-2. **Make it executable:**
-
-        chmod +x resolve_java_formatting_conflicts.sh
-        
-        
-
-3. **Configure the `format` command:** **This is the most important step.** Open the script in a text editor. Locate the line that contains `format "$base_temp"`, `format "$theirs_temp"`, and `format "$file"`. **Replace `format` with the actual command for your Java formatter.**
-
-    * **Example (using Google Java Format):** Change:
-
-            format "$base_temp"
-            # ...
-            format "$theirs_temp"
-            # ...
-            format "$file"
-            
-            
-
-        To:
-
-            google-java-format -i "$base_temp"
-            # ...
-            google-java-format -i "$theirs_temp"
-            # ...
-            google-java-format -i "$file"
-            
-            
-
-    * Ensure your formatter command is correct and available in your system's `PATH`.
-
-4. **Run the script:** Navigate to your Git repository's root directory in your terminal and execute the script:
-
-        ./resolve_java_formatting_conflicts.sh
-        
-        
-
-The script will process all conflicted `.java` files. If it successfully resolves a conflict, the file will be updated in your working tree, and you can then `git add` the file to stage the resolution. If actual logic conflicts remain after formatting, the file will still show merge conflict markers, but the surrounding code will be consistently formatted, making manual resolution easier.
-
-Important Notes
----------------
-
-* This script is most effective for conflicts that are _solely_ due to formatting differences.
-
-* If genuine code logic conflicts exist alongside formatting differences, the script will still format the code, but `git merge-file` might leave conflict markers for the logical discrepancies. You will then need to resolve these remaining conflicts manually.
-
-* Always inspect the changes after running the script (`git diff`) to ensure the resolution is as expected.
-
-* Consider running this script as part of a Git hook (e.g., `pre-rebase` or `post-merge`) if you want to automate it further, but be cautious and understand the implications.
+- It's a good idea to inspect the changes after running the script (`git diff --cached`) to ensure
+  the resolution is as expected.
