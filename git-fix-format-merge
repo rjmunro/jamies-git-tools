@@ -104,9 +104,20 @@ for file in $conflicted_files; do
   # "$base_formatted_temp" is the formatted common ancestor version.
   # "$theirs_formatted_temp" is the formatted other version.
   git merge-file -L current -L base -L other "$file" "$base_formatted_temp" "$theirs_formatted_temp"
+  merge_exit_code=$? # Capture the exit code of git merge-file
 
   # Clean up the temporary files created for this conflict.
   rm "$base_formatted_temp" "$theirs_formatted_temp"
+
+  # Check the merge_exit_code to determine if the merge was clean or had conflicts.
+  if [ "$merge_exit_code" -eq 0 ]; then
+    echo "    Merge for $file was clean. Staging the resolved file."
+    git add "$file" # Automatically stage the file if the merge was clean.
+  else
+    echo "    Warning: Merge for $file resulted in $merge_exit_code conflict(s)."
+    echo "    Manual resolution is still required for $file. It has NOT been staged."
+  fi
 done
 
 echo "✅ All formatting merge conflicts processed."
+echo "Review any files that still have conflicts and stage them manually."
