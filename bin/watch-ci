@@ -20,10 +20,15 @@ SHORT_BRANCH="${BRANCH#rjmunro/}"
 EXIT_CODE=0
 STATUS=$(hub ci-status "$BRANCH" || EXIT_CODE=$?)
 
-# ALlow one retry if the status is not available
+# ALlow two retries if the status is not available
 if [ "$STATUS" = "no status" ]; then
   echo "$STATUS ($BRANCH)"
-  sleep 15
+  sleep 20
+  STATUS=$(hub ci-status "$BRANCH" || EXIT_CODE=$?)
+fi
+if [ "$STATUS" = "no status" ]; then
+  echo "$STATUS ($BRANCH)"
+  sleep 40
   STATUS=$(hub ci-status "$BRANCH" || EXIT_CODE=$?)
 fi
 
