@@ -13,6 +13,8 @@ else
   BRANCH="$1"
 fi
 
+PROJECT="$(basename "$(git rev-parse --show-toplevel)")"
+
 SHORT_BRANCH="${BRANCH#rjmunro/}"
 
 EXIT_CODE=0
@@ -39,7 +41,7 @@ hub pr show -h "$BRANCH" || hub compare "$BRANCH"
 
 # If we are on MacOS, use osascript to display a notification and say to speak say the status
 if [ "$(uname)" = "Darwin" ]; then
-  /usr/bin/osascript -e "display notification \"Branch $SHORT_BRANCH CI Status: $STATUS\" with title \"CI Status\""
+  terminal-notifier -title "CI Status for $PROJECT" -message "Branch $SHORT_BRANCH CI Status: $STATUS"
   say "CI done on branch $SHORT_BRANCH. Status: $STATUS"
   exit $EXIT_CODE
 fi
@@ -49,7 +51,7 @@ if command -v notify-send &> /dev/null; then
   notify-send "Branch $SHORT_BRANCH CI Status: $STATUS" "CI Status"
 
 # If notify-send is not available, use zenity to display a notification
-elif ! command -v notify-send &> /dev/null; then
+elif command -v zenity &> /dev/null; then
   zenity --notification --text "Branch $SHORT_BRANCH CI Status: $STATUS" --title "CI Status"
 
 # If we are on Windows, use PowerShell to display a notification
