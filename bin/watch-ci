@@ -6,6 +6,7 @@ set -euo pipefail
 # Requires: hub (https://github.com/github/hub)
 # Uses osascript and say from macOS to display notifications and speak the status
 # Requires: notify-send or zenity for Linux to display notifications
+
 if [ $# -eq 0 ]
 then
   BRANCH=$(git rev-parse --abbrev-ref HEAD)
@@ -14,29 +15,25 @@ else
 fi
 
 PROJECT="$(basename "$(git rev-parse --show-toplevel)")"
-
 SHORT_BRANCH="${BRANCH#rjmunro/}"
 
 EXIT_CODE=0
 STATUS=$(hub ci-status "$BRANCH" || EXIT_CODE=$?)
 
-# ALlow two retries if the status is not available
-if [ "$STATUS" = "no status" ]; then
-  echo "$STATUS ($BRANCH)"
-  sleep 20
-  STATUS=$(hub ci-status "$BRANCH" || EXIT_CODE=$?)
-fi
-if [ "$STATUS" = "no status" ]; then
-  echo "$STATUS ($BRANCH)"
-  sleep 40
-  STATUS=$(hub ci-status "$BRANCH" || EXIT_CODE=$?)
-fi
+# Retry loop
+TRIES=0
+MAX_INITIAL_TRIES=5
 
-# Keep checking the status until it is no longer pending
-while [ "$STATUS" = "pending" ]; do
-  echo "$STATUS ($BRANCH)"
-  sleep 15
-  STATUS=$(hub ci-status "$BRANCH" || EXIT_CODE=$?)
+while true; do
+  if { [ "$TRIES" -lt "$MAX_INITIAL_TRIES" ] && { [ "$STATUS" = "no status" ] || [ "$STATUS" = "pending" ]; }; } \
+     || { [ "$TRIES" -ge "$MAX_INITIAL_TRIES" ] && [ "$STATUS" = "pending" ]; }; then
+    echo "$STATUS ($BRANCH)"
+    sleep 15
+    STATUS=$(hub ci-status "$BRANCH" || EXIT_CODE=$?)
+    TRIES=$((TRIES + 1))
+  else
+    break
+  fi
 done
 
 echo "$STATUS ($BRANCH)"
@@ -44,7 +41,7 @@ echo "$STATUS ($BRANCH)"
 # Open the pull request page in the browser
 hub pr show -h "$BRANCH" || hub compare "$BRANCH"
 
-# If we are on MacOS, use osascript to display a notification and say to speak say the status
+# If we are on MacOS, use `terminal-notifier` to display a notification and `say` to speak say the status
 if [ "$(uname)" = "Darwin" ]; then
   terminal-notifier -title "CI Status for $PROJECT" -message "Branch $SHORT_BRANCH CI Status: $STATUS"
   say "CI done on branch $SHORT_BRANCH. Status: $STATUS"
