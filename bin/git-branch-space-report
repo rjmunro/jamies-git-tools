@@ -3,23 +3,46 @@
 # git-branch-space-report.sh
 #
 # Estimate how much unique data each branch keeps alive compared to a base branch.
+#
 # Usage:
 #   ./git-branch-space-report.sh
-#       -> base = current branch, check all branches
+#       -> base = current branch, check all *local* branches
 #   ./git-branch-space-report.sh <base>
-#       -> base = <base>, check all other branches
+#       -> base = <base>, check all *local* branches
 #   ./git-branch-space-report.sh <base> <branch1> <branch2> ...
-#       -> base = <base>, check only listed branches
+#       -> base = <base>, check only listed *local* branches
+#   ./git-branch-space-report.sh --remote
+#       -> base = current branch, check all *remote* branches
+#   ./git-branch-space-report.sh --remote <base>
+#       -> base = <base>, check all *remote* branches
+#   ./git-branch-space-report.sh --remote <base> <branch1> <branch2> ...
+#       -> base = <base>, check only listed *remote* branches
 
 set -euo pipefail
 
-# Parse arguments
+INCLUDE_REMOTE=false
+
+# Parse --remote flag
+if [ "${1:-}" = "--remote" ]; then
+    INCLUDE_REMOTE=true
+    shift
+fi
+
+# Determine base and branches
 if [ $# -eq 0 ]; then
     BASE_BRANCH=$(git rev-parse --abbrev-ref HEAD)
-    BRANCHES=$(git for-each-ref --format='%(refname:short)' refs/heads/ | grep -v "^$BASE_BRANCH$")
+    if $INCLUDE_REMOTE; then
+        BRANCHES=$(git for-each-ref --format='%(refname:short)' refs/remotes/ | grep -v "^$BASE_BRANCH$")
+    else
+        BRANCHES=$(git for-each-ref --format='%(refname:short)' refs/heads/ | grep -v "^$BASE_BRANCH$")
+    fi
 elif [ $# -eq 1 ]; then
     BASE_BRANCH="$1"
-    BRANCHES=$(git for-each-ref --format='%(refname:short)' refs/heads/ | grep -v "^$BASE_BRANCH$")
+    if $INCLUDE_REMOTE; then
+        BRANCHES=$(git for-each-ref --format='%(refname:short)' refs/remotes/ | grep -v "^$BASE_BRANCH$")
+    else
+        BRANCHES=$(git for-each-ref --format='%(refname:short)' refs/heads/ | grep -v "^$BASE_BRANCH$")
+    fi
 else
     BASE_BRANCH="$1"
     shift
@@ -36,7 +59,7 @@ echo "Analyzing branches (base: $BASE_BRANCH)..."
 echo
 
 # Header
-printf "%-30s %15s\n" "Branch" "Unique Size (MB)"
+printf "%-40s %15s\n" "Branch" "Unique Size (MB)"
 echo "-------------------------------------------------------------"
 
 # Loop over branches
@@ -54,5 +77,5 @@ for branch in $BRANCHES; do
 
     size_mb=$(awk -v s="$size_bytes" 'BEGIN {printf "%.2f", s/1024/1024}')
 
-    printf "%-30s %15s\n" "$branch" "$size_mb"
+    printf "%-40s %15s\n" "$branch" "$size_mb"
 done | sort -k2 -nr
