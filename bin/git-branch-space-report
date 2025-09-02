@@ -2,7 +2,8 @@
 #
 # git-branch-space-report.sh
 #
-# Estimate how much unique data each branch keeps alive compared to a base branch.
+# Estimate how much unique *packed* data each branch keeps alive compared to a base branch.
+# Branches fully merged into the base are ignored.
 #
 # Usage:
 #   ./git-branch-space-report.sh
@@ -52,13 +53,18 @@ echo "Analyzing branches (base: $BASE_BRANCH)..."
 echo
 
 # Header
-printf "%-40s %15s\n" "Branch" "Unique Size (MB)"
-echo "-------------------------------------------------------------"
+printf "%-40s %15s\n" "Branch" "Unique Packed Size (MB)"
+echo "--------------------------------------------------------------------------"
 
 # Loop over branches
 for branch in $BRANCHES; do
     if ! git rev-parse --verify "$branch" >/dev/null 2>&1; then
         echo "Warning: branch '$branch' not found, skipping."
+        continue
+    fi
+
+    # Skip branches already merged into base
+    if git merge-base --is-ancestor "$branch" "$BASE_BRANCH"; then
         continue
     fi
 
