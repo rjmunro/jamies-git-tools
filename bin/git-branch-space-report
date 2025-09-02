@@ -64,7 +64,7 @@ for branch in $BRANCHES; do
 
     size_bytes=$(git rev-list --objects "$BASE_BRANCH..$branch" \
         | awk '{print $1}' \
-        | git cat-file --batch-check='%(objecttype) %(objectname) %(objectsize)' \
+        | git cat-file --batch-check='%(objecttype) %(objectname) %(objectsize:disk)' \
         | awk '/^blob/ {sum += $3} END {print sum+0}')
 
     size_mb=$(awk -v s="$size_bytes" 'BEGIN {printf "%.2f", s/1024/1024}')
