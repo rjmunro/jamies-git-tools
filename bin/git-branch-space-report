@@ -2,15 +2,31 @@
 #
 # git-branch-space-report.sh
 #
-# Estimate how much unique data each branch keeps alive compared to main.
-# Run this inside your repo. Requires awk, sort, and git.
+# Estimate how much unique data each branch keeps alive compared to a base branch.
+# Usage:
+#   ./git-branch-space-report.sh
+#       -> base = current branch, check all branches
+#   ./git-branch-space-report.sh <base>
+#       -> base = <base>, check all other branches
+#   ./git-branch-space-report.sh <base> <branch1> <branch2> ...
+#       -> base = <base>, check only listed branches
 
 set -euo pipefail
 
-# You can change this if your main branch is named differently
-BASE_BRANCH="origin/main"
+# Parse arguments
+if [ $# -eq 0 ]; then
+    BASE_BRANCH=$(git rev-parse --abbrev-ref HEAD)
+    BRANCHES=$(git for-each-ref --format='%(refname:short)' refs/heads/ | grep -v "^$BASE_BRANCH$")
+elif [ $# -eq 1 ]; then
+    BASE_BRANCH="$1"
+    BRANCHES=$(git for-each-ref --format='%(refname:short)' refs/heads/ | grep -v "^$BASE_BRANCH$")
+else
+    BASE_BRANCH="$1"
+    shift
+    BRANCHES="$@"
+fi
 
-# Make sure base branch exists
+# Validate base branch
 if ! git rev-parse --verify "$BASE_BRANCH" >/dev/null 2>&1; then
     echo "Error: base branch '$BASE_BRANCH' not found."
     exit 1
@@ -24,12 +40,14 @@ printf "%-30s %15s\n" "Branch" "Unique Size (MB)"
 echo "-------------------------------------------------------------"
 
 # Loop over branches
-git for-each-ref --format='%(refname:short)' refs/heads/ | while read -r branch; do
-    if [ "$branch" = "$BASE_BRANCH" ]; then
+for branch in $BRANCHES; do
+    # Ensure branch exists
+    if ! git rev-parse --verify "$branch" >/dev/null 2>&1; then
+        echo "Warning: branch '$branch' not found, skipping."
         continue
     fi
 
-    # Sum blob sizes that are in branch but not in base
+    # Sum blob sizes unique to this branch vs base
     size_bytes=$(git rev-list --objects "$BASE_BRANCH..$branch" |
         git cat-file --batch-check='%(objecttype) %(objectname) %(objectsize)' |
         awk '/^blob/ {sum += $3} END {print sum+0}')
