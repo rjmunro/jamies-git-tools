@@ -9,6 +9,34 @@
 # or zero if all commands in the pipeline exit successfully.
 set -euo pipefail
 
+file_globs=()
+
+print_help() {
+  echo "Usage: $0 [-help|-h] [--remove-indentation] [file-glob ...]"
+  echo "  --help, -h             Show this help message."
+  echo "  file-glob              Only process conflicted files matching these globs. By default all conflicted files are processed."
+  exit 1
+}
+
+# Parse arguments
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --help|-h)
+      print_help
+      exit 0
+      ;;
+    -*)
+      echo "Unknown option: $1"
+      print_help
+      exit 1
+      ;;
+    *)
+      file_globs+=("$1")
+      shift
+      ;;
+  esac
+done
+
 # Determine the root directory of the Git repository.
 # This ensures the script can be run from any subdirectory within the repo.
 ROOT="$(git rev-parse --show-toplevel)"
@@ -57,11 +85,15 @@ format_file() {
 
 # Get a list of all files that are currently in a merge conflict state (`--diff-filter=U`).
 # We are now checking all conflicted files, and Prettier/ESLint will determine applicability.
-conflicted_files=$(git diff --name-only --diff-filter=U)
+if [ ${#file_globs[@]} -eq 0 ]; then
+  conflicted_files=$(git diff --name-only --diff-filter=U)
+else
+  conflicted_files=$(git diff --name-only --diff-filter=U -- "${file_globs[@]}")
+fi
 
 # Check if the 'conflicted_files' variable is empty.
 if [ -z "$conflicted_files" ]; then
-  echo "No conflicted files found to fix formatting in."
+  echo "No conflicted files found."
   exit 0 # Exit successfully if no conflicts are found.
 fi
 
