@@ -9,10 +9,14 @@
 # or zero if all commands in the pipeline exit successfully.
 set -euo pipefail
 
+REMOVE_INDENTATION=false
 file_globs=()
 
 print_help() {
   echo "Usage: $0 [-help|-h] [--remove-indentation] [file-glob ...]"
+  echo "  --remove-indentation   Remove indentation from non-md/txt/py files after formatting."
+  echo "                         Useful where indentation has caused conflicts, e.g. because something has been wrapped in an if statement."
+  echo "                         You should manually re-apply a formatting tool to fix indentation after running this script."
   echo "  --help, -h             Show this help message."
   echo "  file-glob              Only process conflicted files matching these globs. By default all conflicted files are processed."
   exit 1
@@ -21,6 +25,10 @@ print_help() {
 # Parse arguments
 while [[ $# -gt 0 ]]; do
   case "$1" in
+    --remove-indentation)
+      REMOVE_INDENTATION=true
+      shift
+      ;;
     --help|-h)
       print_help
       exit 0
@@ -79,6 +87,11 @@ format_file() {
     echo "    Prettier applied successfully to $file_path"
   else
     echo "    Warning: Prettier failed or did not apply to $file_path. This might be expected for some file types."
+  fi
+
+  # Optionally remove indentaion except for .md, .txt, .py files
+  if [[ "$REMOVE_INDENTATION" == "true" && "$file_extension" != "md" && "$file_extension" != "txt" && "$file_extension" != "py" ]]; then
+    sed -i.bak 's/^[ \t]*//' "$file_path"
   fi
 }
 
