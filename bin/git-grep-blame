@@ -1,0 +1,204 @@
+#!/usr/bin/env python3
+"""
+git-grep-blame.py
+
+Search a repository with `git grep` and show `git blame` metadata for each matched line.
+- Calls `git blame --line-porcelain` once per file (fast when there are many matches in the same file).
+- Shows commit SHA, author name and a date (either relative like "2 weeks ago" or short date YYYY-MM-DD).
+
+Usage:
+  git-grep-blame.py [options] <pattern> [<path> ...]
+
+Examples:
+  ./git-grep-blame.py "TODO"
+  ./git-grep-blame.py --date-format short --sha-length 40 "fixme" src/
+  ./git-grep-blame.py --full "memory leak"
+
+Notes:
+- If your pattern starts with a dash, put a `--` before it to stop option parsing.
+- The script prints one line per match in this format:
+    <file>:<line> <sha> <author> <date> \t <matching content>
+
+"""
+
+from __future__ import annotations
+import argparse
+import subprocess
+import sys
+import re
+import time
+import datetime
+from collections import defaultdict
+from typing import Dict, Any, List, Tuple
+
+
+def run_cmd(cmd: List[str]) -> Tuple[str, str, int]:
+    p = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+    return p.stdout, p.stderr, p.returncode
+
+
+def human_delta_since(epoch: int) -> str:
+    if epoch is None:
+        return "unknown"
+    now = time.time()
+    s = int(now - epoch)
+    if s < 0:
+        return "in the future"
+    if s < 60:
+        return "just now"
+    m = s // 60
+    if m < 60:
+        return f"{m} minute{'s' if m != 1 else ''} ago"
+    h = s // 3600
+    if h < 24:
+        return f"{h} hour{'s' if h != 1 else ''} ago"
+    d = s // 86400
+    if d < 7:
+        return f"{d} day{'s' if d != 1 else ''} ago"
+    w = d // 7
+    if d < 30:
+        return f"{w} week{'s' if w != 1 else ''} ago"
+    mo = d // 30
+    if d < 365:
+        return f"{mo} month{'s' if mo != 1 else ''} ago"
+    y = d // 365
+    return f"{y} year{'s' if y != 1 else ''} ago"
+
+
+def parse_args():
+    p = argparse.ArgumentParser(description="Run git grep and show git blame info for matched lines (sha, author, date).")
+    p.add_argument('pattern', help='Pattern to search (regular expression supported by git grep).')
+    p.add_argument('paths', nargs='*', help='Optional path(s) to limit the search to.')
+    p.add_argument('--date-format', choices=['relative', 'short'], default='relative',
+                   help="How to show dates: 'relative' (e.g. '2 weeks ago') or 'short' (YYYY-MM-DD). Default: relative")
+    p.add_argument('--sha-length', type=int, default=8,
+                   help='How many hex characters of the SHA to show (default 8). Use 0 to show full 40 chars.')
+    p.add_argument('--full', action='store_true', help='Show full 40-character SHA (overrides --sha-length).')
+    p.add_argument('--show-context-line', action='store_true', help="Show the content line exactly as from git blame (default: show grep's matched line).")
+    return p.parse_args()
+
+
+def build_matches(grep_out: str) -> Dict[str, List[Tuple[int, str]]]:
+    """Parse git grep -n output into dict: file -> list of (lineno, matched-line)"""
+    d: Dict[str, List[Tuple[int, str]]] = defaultdict(list)
+    for raw in grep_out.splitlines():
+        if not raw:
+            continue
+        # split into 3 parts max: file, lineno, content
+        parts = raw.split(':', 2)
+        if len(parts) < 3:
+            continue
+        file, lineno_s, content = parts[0], parts[1], parts[2]
+        try:
+            lineno = int(lineno_s)
+        except ValueError:
+            continue
+        d[file].append((lineno, content))
+    return d
+
+
+def parse_blame_porcelain(porcelain_out: str) -> Dict[int, Dict[str, Any]]:
+    """Parse git blame --line-porcelain output into a mapping final_lineno -> {sha, author, author_time, line} """
+    lines = porcelain_out.splitlines()
+    i = 0
+    out: Dict[int, Dict[str, Any]] = {}
+    header_re = re.compile(r'^([0-9a-fA-F]+)\s+\d+\s+(\d+)\b')
+
+    while i < len(lines):
+        m = header_re.match(lines[i])
+        if not m:
+            i += 1
+            continue
+        sha = m.group(1)
+        final_lineno = int(m.group(2))
+        author = None
+        author_time = None
+        j = i + 1
+        while j < len(lines) and not lines[j].startswith('\t'):
+            l = lines[j]
+            if l.startswith('author '):
+                author = l[len('author '):]
+            elif l.startswith('author-time '):
+                try:
+                    author_time = int(l.split()[1])
+                except Exception:
+                    pass
+            j += 1
+        line_text = lines[j][1:] if j < len(lines) and lines[j].startswith('\t') else ''
+        out[final_lineno] = {'sha': sha, 'author': author or 'unknown', 'author_time': author_time, 'line': line_text}
+        i = j + 1
+    return out
+
+
+def main():
+    args = parse_args()
+
+    grep_cmd = ['git', 'grep', '-n', '--no-color', '-I', '--', args.pattern] + args.paths
+    stdout, stderr, rc = run_cmd(grep_cmd)
+    if rc != 0 and not stdout:
+        # git grep returns exit code 1 if no matches
+        print('No matches found.', file=sys.stderr)
+        sys.exit(0)
+
+    matches_by_file = build_matches(stdout)
+    if not matches_by_file:
+        print('No matches found (parsed).', file=sys.stderr)
+        sys.exit(0)
+
+    sha_len = 40 if args.full else args.sha_length
+
+    for file, matches in matches_by_file.items():
+        blame_cmd = ['git', 'blame', '--line-porcelain', '--', file]
+        out, err, rc = run_cmd(blame_cmd)
+        if rc != 0:
+            # fallback: try to blame only the needed lines later per-line
+            blame_map = {}
+        else:
+            blame_map = parse_blame_porcelain(out)
+
+        for lineno, grep_line in matches:
+            info = blame_map.get(lineno)
+            if info is None:
+                # try blaming that specific line
+                try:
+                    sub_out, _, sub_rc = run_cmd(['git', 'blame', '-L', f'{lineno},{lineno}', '--line-porcelain', '--', file])
+                    if sub_rc == 0:
+                        sub_map = parse_blame_porcelain(sub_out)
+                        info = sub_map.get(lineno)
+                except Exception:
+                    info = None
+
+            if info is None:
+                sha = '0' * (sha_len or 40)
+                author = 'unknown'
+                author_time = None
+            else:
+                sha = info['sha']
+                author = info.get('author', 'unknown')
+                author_time = info.get('author_time')
+
+            if sha_len and sha_len > 0:
+                sha_display = sha[:sha_len]
+            else:
+                sha_display = sha  # full
+
+            if args.date_format == 'short':
+                if author_time:
+                    try:
+                        dt = datetime.datetime.fromtimestamp(author_time)
+                        date_display = dt.strftime('%Y-%m-%d')
+                    except Exception:
+                        date_display = 'unknown'
+                else:
+                    date_display = 'unknown'
+            else:
+                date_display = human_delta_since(author_time)
+
+            # choose content to display: grep's line (preserves match) or blame's exact line
+            content_display = info['line'] if args.show_context_line and info is not None else grep_line
+
+            print(f"{file}:{lineno} {sha_display} {author} {date_display}\t{content_display}")
+
+
+if __name__ == '__main__':
+    main()
