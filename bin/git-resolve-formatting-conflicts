@@ -1,0 +1,165 @@
+#!/bin/bash
+# This script automatically resolves formatting-related Git merge conflicts
+# in various file types by applying Prettier and ESLint (if applicable) to
+# all conflicting versions (base, ours, theirs) before performing a three-way merge.
+
+# Exit immediately if a command exits with a non-zero status.
+# Treat unset variables as an error when substituting.
+# The exit status of a pipeline is the status of the last command to exit with a non-zero status,
+# or zero if all commands in the pipeline exit successfully.
+set -euo pipefail
+
+REMOVE_INDENTATION=false
+file_globs=()
+
+print_help() {
+  echo "Usage: $0 [-help|-h] [--remove-indentation] [file-glob ...]"
+  echo "  --remove-indentation   Remove indentation from non-md/txt/py files after formatting."
+  echo "                         Useful where indentation has caused conflicts, e.g. because something has been wrapped in an if statement."
+  echo "                         You should manually re-apply a formatting tool to fix indentation after running this script."
+  echo "  --help, -h             Show this help message."
+  echo "  file-glob              Only process conflicted files matching these globs. By default all conflicted files are processed."
+  exit 1
+}
+
+# Parse arguments
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --remove-indentation)
+      REMOVE_INDENTATION=true
+      shift
+      ;;
+    --help|-h)
+      print_help
+      exit 0
+      ;;
+    -*)
+      echo "Unknown option: $1"
+      print_help
+      exit 1
+      ;;
+    *)
+      file_globs+=("$1")
+      shift
+      ;;
+  esac
+done
+
+# Determine the root directory of the Git repository.
+# This ensures the script can be run from any subdirectory within the repo.
+ROOT="$(git rev-parse --show-toplevel)"
+# Change the current directory to the Git repository root.
+cd "$ROOT"
+
+# --- Define the formatting function ---
+# This function encapsulates the actual formatting commands using Prettier and ESLint.
+# It attempts to format the file using Prettier first, then ESLint if it's a JS/TS file.
+# The first argument ($1) to this function is the path to the file to be formatted.
+# IMPORTANT: This function expects to operate on a file path within the actual Git repository
+# structure, so that Prettier/ESLint can correctly discover their configuration files.
+format_file() {
+  local file_path="$1"
+  local file_extension="${file_path##*.}" # Extract file extension
+
+  echo "  --> Formatting $file_path"
+
+  # Run ESLint --fix for common JavaScript/TypeScript file types
+  # 2>/dev/null redirects stderr to suppress potential errors/warnings from ESLint.
+  case "$file_extension" in
+    js|jsx|ts|tsx|vue)
+      if npx eslint --fix --quiet "$file_path" 2>/dev/null; then
+        echo "    ESLint --fix applied successfully to $file_path"
+      else
+        echo "    Warning: ESLint --fix failed or did not apply to $file_path. Check ESLint configuration or file type."
+      fi
+      ;;
+    *)
+      # ESLint is generally for JS/TS, so skip for other file types
+      echo "    Skipping ESLint for .$file_extension file: $file_path"
+      ;;
+  esac
+
+  # Run Prettier --write
+  # --loglevel silent to avoid noise if a file type isn't supported by Prettier
+  # 2>/dev/null redirects stderr to suppress potential errors/warnings from Prettier
+  # if it doesn't support the file type.
+  if npx prettier --write --loglevel silent "$file_path" 2>/dev/null; then
+    echo "    Prettier applied successfully to $file_path"
+  else
+    echo "    Warning: Prettier failed or did not apply to $file_path. This might be expected for some file types."
+  fi
+
+  # Optionally remove indentaion except for .md, .txt, .py files
+  if [[ "$REMOVE_INDENTATION" == "true" && "$file_extension" != "md" && "$file_extension" != "txt" && "$file_extension" != "py" ]]; then
+    sed -i.bak 's/^[ \t]*//' "$file_path"
+  fi
+}
+
+
+# Get a list of all files that are currently in a merge conflict state (`--diff-filter=U`).
+# We are now checking all conflicted files, and Prettier/ESLint will determine applicability.
+if [ ${#file_globs[@]} -eq 0 ]; then
+  conflicted_files=$(git diff --name-only --diff-filter=U)
+else
+  conflicted_files=$(git diff --name-only --diff-filter=U -- "${file_globs[@]}")
+fi
+
+# Check if the 'conflicted_files' variable is empty.
+if [ -z "$conflicted_files" ]; then
+  echo "No conflicted files found."
+  exit 0 # Exit successfully if no conflicts are found.
+fi
+
+# Loop through each conflicted file found.
+for file in $conflicted_files; do
+  echo "Processing conflict in: $file"
+
+  # Create temporary files to hold the *formatted* versions of base and theirs.
+  # The 'ours' version will be formatted directly in $file and then used by merge-file.
+  base_formatted_temp=$(mktemp)
+  theirs_formatted_temp=$(mktemp)
+
+  # --- Process and Format the 'Base' Version (Common Ancestor) ---
+  # Extract the base version's content and write it directly to the actual file path.
+  git show ":1:$file" > "$file"
+  # Format the file in-place. Prettier/ESLint can now find their configs relative to $file.
+  format_file "$file"
+  # Copy the *formatted* content of the base version to a temporary file.
+  cp "$file" "$base_formatted_temp"
+
+  # --- Process and Format the 'Theirs' Version (Incoming) ---
+  # Extract the theirs version's content and write it directly to the actual file path.
+  git show ":3:$file" > "$file"
+  # Format the file in-place.
+  format_file "$file"
+  # Copy the *formatted* content of the theirs version to a temporary file.
+  cp "$file" "$theirs_formatted_temp"
+
+  # --- Process and Format the 'Local' Version (Ours) ---
+  # Extract the ours version's content and write it directly to the actual file path.
+  git show ":2:$file" > "$file"
+  # Format the file in-place. This '$file' will now contain your formatted local version
+  # and will serve as the primary file for the three-way merge (modified in-place by git-merge-file).
+  format_file "$file"
+
+  # Perform a three-way merge using 'git merge-file'.
+  # -L flags provide labels for the conflict markers in case a conflict still exists.
+  # "$file" is the original file path, which now contains the formatted 'ours' version,
+  # and will be modified in place with the final merge result.
+  # "$base_formatted_temp" is the formatted common ancestor version.
+  # "$theirs_formatted_temp" is the formatted other version.
+  # Check the merge_exit_code to determine if the merge was clean or had conflicts.
+  if git merge-file -L current -L base -L other "$file" "$base_formatted_temp" "$theirs_formatted_temp"; then
+    echo "    Merge for $file was clean. Staging the resolved file."
+    git add "$file" # Automatically stage the file if the merge was clean.
+  else
+    echo "    Warning: Merge for $file resulted in conflicts."
+    echo "    Manual resolution is still required for $file. It has NOT been staged."
+  fi
+
+  # Clean up the temporary files created for this conflict.
+  rm "$base_formatted_temp" "$theirs_formatted_temp"
+done
+
+echo "✅ All formatting merge conflicts processed."
+echo "Review any files that still have conflicts and stage them manually."
