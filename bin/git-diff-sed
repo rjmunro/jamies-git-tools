@@ -1,0 +1,37 @@
+#!/bin/bash
+
+# A script to run `git diff` with a sed replacement on the "old" file.
+#
+# Useful if there is a systematic change you want to ignore, e.g. renaming a variable.
+#
+# Usage: git-diff-sed <sed_command> <file_path> [<git_diff_options>...]
+#
+# Example, to hide changes from "old-text" to "new-text":
+#   git-diff-sed 's/old-text/new-text/g' path/to/your/file.txt --word-diff
+
+SED_COMMAND=$1
+FILE_PATH=$2
+
+# Check if required arguments are provided
+if [ -z "$SED_COMMAND" ] || [ -z "$FILE_PATH" ]; then
+    echo "Usage: $0 <sed_command> <file_path> [<git_diff_options>...]" >&2
+    exit 1
+fi
+
+# Shift the first two arguments (sed command and file path)
+shift 2
+
+# Check if the file exists in the repository
+if ! git rev-parse --quiet --verify HEAD:"$FILE_PATH" > /dev/null; then
+    echo "Error: File '$FILE_PATH' not found in HEAD of the repository." >&2
+    exit 1
+fi
+
+# Build the temporary file for the "old" version
+OLD_FILE_CONTENT=$(git show HEAD:"$FILE_PATH" | sed -E "$SED_COMMAND")
+
+# Get the standard `git diff` formatting
+git diff --no-index \
+    <(echo "$OLD_FILE_CONTENT") \
+    "$FILE_PATH" \
+    "$@"

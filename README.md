@@ -10,6 +10,8 @@ This repository contains various scripts designed to help with git operations:
   characters from the working directory.
 - [git-clean-whitespace](doc/git-clean-whitespace.md) - A script to remove all whitespace characters
   from the working directory.
+- [git-diff-sed](doc/git-diff-sed.md) - A script that applies sed transformations to the old version
+  of a file before running git diff to ignore systematic changes.
 - [git-grep-blame](doc/git-grep-blame.md) - A script that combines git grep and git blame to show who
   last modified each line matching a search pattern.
 - [git-rebase-all](doc/git-rebase-all.md) - A script to rebase all branches onto the current branch.
