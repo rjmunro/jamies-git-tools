@@ -2,9 +2,14 @@
 
 This repository contains various scripts designed to help with git operations:
 
-- [git-branch-space-report](doc/git-branch-space-report.md) - A script to report the disk space used by each branch.
-- [git-clean-nonwhitespace](doc/git-clean-nonwhitespace.md) - A script to remove all non-whitespace characters from the working directory.
-- [git-clean-whitespace](doc/git-clean-whitespace.md) - A script to remove all whitespace characters from the working directory.
+- [git-bisect-rebase](doc/git-bisect-rebase.md) - A script that uses git bisect to find the most
+  recent commit that can be successfully rebased onto without conflicts.
+- [git-branch-space-report](doc/git-branch-space-report.md) - A script to report the disk space used
+  by each branch.
+- [git-clean-nonwhitespace](doc/git-clean-nonwhitespace.md) - A script to remove all non-whitespace
+  characters from the working directory.
+- [git-clean-whitespace](doc/git-clean-whitespace.md) - A script to remove all whitespace characters
+  from the working directory.
 - [git-rebase-all](doc/git-rebase-all.md) - A script to rebase all branches onto the current branch.
 - [git-resolve-formatting-conflicts](doc/git-resolve-formatting-conflicts.md) - A script to help
   resolve git merge conflicts caused by code formatting changes.

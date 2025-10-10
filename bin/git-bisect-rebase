@@ -1,0 +1,100 @@
+#!/bin/bash
+
+# git-bisect-rebase
+#
+# This script attempts to rebase the current branch onto a specified target branch.
+# If the initial rebase fails, it uses git-bisect to find the earliest commit
+# on the current branch that can be successfully rebased onto the target branch.
+# It then performs the rebase up to that point.
+
+set -x # Exit immediately if a command exits with a non-zero status
+
+# --- INTERNAL BISECT TEST FUNCTION ---
+# This part is executed when the script is called with the --bisect-test parameter
+if [ "$1" == "--bisect-test" ]; then
+  # The actual target branch name is passed as the second argument
+  CURRENT_BRANCH="$2"
+  PRE_TEST_HEAD=$(git rev-parse HEAD)
+  # Set -e is important here as well. If rebase fails, we want to exit with non-zero.
+  git rebase --no-update-refs HEAD "$CURRENT_BRANCH"
+  if [ $? -eq 0 ]; then
+    echo "Rebase test successful for current HEAD."
+    git checkout -f "$PRE_TEST_HEAD" # Restore original HEAD
+    exit 0 # Bisect 'good'
+  else
+    echo "Rebase test failed for current HEAD. Aborting rebase for bisect."
+    git rebase --abort
+    git checkout -f "$PRE_TEST_HEAD" # Restore original HEAD
+    exit 1 # Bisect 'bad'
+  fi
+fi
+# --- END INTERNAL BISECT TEST FUNCTION ---
+
+
+# --- MAIN SCRIPT LOGIC ---
+
+TARGET_BRANCH="$1"
+CURRENT_BRANCH=$(git rev-parse --abbrev-ref HEAD)
+STASH_PERFORMED=false
+
+if [ -z "$TARGET_BRANCH" ]; then
+  echo "Usage: $0 <target-branch>"
+  echo "Example: $0 main"
+  exit 1
+fi
+
+echo "Attempting to rebase '$CURRENT_BRANCH' onto '$TARGET_BRANCH'..."
+
+# --- STASHING LOGIC START ---
+# Check if there are any uncommitted changes (staged or unstaged)
+# git update-index --refresh ensures the index is up-to-date
+git update-index --refresh >/dev/null 2>&1
+if ! git diff-files --quiet --exit-code || ! git diff-index --quiet --exit-code --cached HEAD; then
+    # There are changes (unstaged or staged)
+    echo "Detected uncommitted changes. Stashing them temporarily..."
+    # Using 'git stash push' for modern git, '-m' for message, '>/dev/null 2>&1' to suppress output
+    git stash push -m "git-bisect-rebase: Temporary stash of working changes" > /dev/null 2>&1
+    STASH_PERFORMED=true
+else
+    echo "No uncommitted changes to stash."
+fi
+# --- STASHING LOGIC END ---
+
+# Try the rebase directly
+if git rebase --no-update-refs "$TARGET_BRANCH"; then
+  echo "Rebase successful!"
+else
+  echo "Initial rebase failed. Starting bisect to find the earliest successful rebase point."
+  echo "You may need to resolve conflicts during the bisect process (if the bisect test stops)."
+  echo "Reverting to original HEAD to start bisect."
+
+  # Abort the failed rebase
+  git rebase --abort
+
+  # Get the common ancestor as the start of the bisect range
+  COMMON_ANCESTOR=$(git merge-base "$TARGET_BRANCH" "$CURRENT_BRANCH")
+
+  if [ -z "$COMMON_ANCESTOR" ]; then
+    echo "Error: Could not find a common ancestor between '$TARGET_BRANCH' and '$CURRENT_BRANCH'."
+    echo "This script might not be suitable for branches with no shared history."
+    exit 1
+  fi
+
+  echo "Bisecting from '$COMMON_ANCESTOR' to '$CURRENT_BRANCH' to find the earliest successful rebase point."
+
+  # Start git bisect
+  git bisect start "$TARGET_BRANCH" "$COMMON_ANCESTOR"
+
+  # Run the bisect, calling this script itself as the test
+  # We pass '--bisect-test' as the first argument, and the TARGET_BRANCH as the second.
+  # $0 refers to the name of the current script.
+  git bisect run "$0" --bisect-test "$CURRENT_BRANCH"
+fi
+
+# If we stashed changes, pop them back
+if [ "$STASH_PERFORMED" = true ]; then
+    echo "Rebase was successful. Restoring stashed changes..."
+    git stash pop 
+fi
+
+echo "Script finished. Run 'git bisect reset' to clean up the bisect state."
