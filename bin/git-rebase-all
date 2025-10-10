@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# Usage: ./list_tip_branches.sh [--skip-pushed] [base-branch]
+# Usage: git rebase-all [--include-pushed] [base-branch]
 SKIP_PUSHED=true
 BASE_BRANCH=""
 
@@ -47,14 +47,17 @@ git branch --no-contains "$BASE_BRANCH" --sort=-committerdate | while read branc
 
   # Skip branches that are fully pushed if the flag is enabled
   if [ "$SKIP_PUSHED" = true ]; then
-    remote_status=$(git status -sb --porcelain=2 --branch "$branch" 2>/dev/null | grep "^# branch.upstream")
+    # 1. Check if a remote branch with the same name exists
+    remote_ref=$(git for-each-ref --format='%(refname)' refs/remotes/*/"$branch" | head -n 1)
 
-    if [ -n "$remote_status" ]; then
-      # Check if the branch is fully synced with its upstream
-      if git diff --quiet "$branch"@"{upstream}" "$branch" 2>/dev/null; then
-        echo "# Skipping fully pushed branch: $branch"
+    if [ -n "$remote_ref" ]; then
+      # 2. Check if the local branch is fully synced with that remote branch
+      # This is true if the remote ref is the same commit as the local branch
+      if git diff --quiet "$remote_ref" "$branch" 2>/dev/null; then
+        echo "# Skipping fully pushed branch: $branch (synced with $remote_ref)"
         continue
       fi
+    # If there is no remote ref with the same name, the branch is likely local-only
     fi
   fi
 
