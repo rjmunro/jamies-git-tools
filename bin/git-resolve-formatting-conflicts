@@ -56,50 +56,147 @@ ROOT="$(git rev-parse --show-toplevel)"
 # Change the current directory to the Git repository root.
 cd "$ROOT"
 
+# --- Detect available formatters based on config files ---
+detect_formatters() {
+  local has_prettier=false
+  local has_eslint=false
+  local has_black=false
+  local has_rustfmt=false
+
+  # Check for Prettier config files
+  if [[ -f .prettierrc || -f .prettierrc.json || -f .prettierrc.js || -f .prettierrc.yml || -f .prettierrc.yaml || -f prettier.config.js ]] || grep -q '"prettier"' package.json 2>/dev/null; then
+    if command -v npx >/dev/null 2>&1 && npx prettier --version >/dev/null 2>&1; then
+      has_prettier=true
+      echo "  Detected: Prettier (config found)"
+    fi
+  fi
+
+  # Check for ESLint config files
+  if [[ -f .eslintrc || -f .eslintrc.js || -f .eslintrc.json || -f .eslintrc.yml || -f .eslintrc.yaml || -f eslint.config.js ]] || grep -q '"eslint"' package.json 2>/dev/null; then
+    if command -v npx >/dev/null 2>&1 && npx eslint --version >/dev/null 2>&1; then
+      has_eslint=true
+      echo "  Detected: ESLint (config found)"
+    fi
+  fi
+
+  # Check for Black config (pyproject.toml with black section or .black file)
+  if [[ -f pyproject.toml ]] && grep -q '\[tool\.black\]' pyproject.toml 2>/dev/null; then
+    if command -v black >/dev/null 2>&1; then
+      has_black=true
+      echo "  Detected: Black (config found)"
+    fi
+  fi
+
+  # Check for rustfmt config
+  if [[ -f rustfmt.toml || -f .rustfmt.toml ]] && command -v rustfmt >/dev/null 2>&1; then
+    has_rustfmt=true
+    echo "  Detected: rustfmt (config found)"
+  fi
+
+  # Export detected formatters
+  export HAS_PRETTIER=$has_prettier
+  export HAS_ESLINT=$has_eslint
+  export HAS_BLACK=$has_black
+  export HAS_RUSTFMT=$has_rustfmt
+}
+
 # --- Define the formatting function ---
-# This function encapsulates the actual formatting commands using Prettier and ESLint.
-# It attempts to format the file using Prettier first, then ESLint if it's a JS/TS file.
+# This function encapsulates the actual formatting commands using detected formatters.
+# It attempts to format the file using appropriate tools based on file type and available configs.
 # The first argument ($1) to this function is the path to the file to be formatted.
 # IMPORTANT: This function expects to operate on a file path within the actual Git repository
-# structure, so that Prettier/ESLint can correctly discover their configuration files.
+# structure, so that formatters can correctly discover their configuration files.
 format_file() {
   local file_path="$1"
   local file_extension="${file_path##*.}" # Extract file extension
+  local formatted=false
 
   echo "  --> Formatting $file_path"
 
-  # Run ESLint --fix for common JavaScript/TypeScript file types
-  # 2>/dev/null redirects stderr to suppress potential errors/warnings from ESLint.
+  # Apply formatters based on file type and detected configs
   case "$file_extension" in
     js|jsx|ts|tsx|vue)
-      if npx eslint --fix --quiet "$file_path" 2>/dev/null; then
-        echo "    ESLint --fix applied successfully to $file_path"
-      else
-        echo "    Warning: ESLint --fix failed or did not apply to $file_path. Check ESLint configuration or file type."
+      # ESLint for JavaScript/TypeScript files
+      if [[ "$HAS_ESLINT" == "true" ]]; then
+        if npx eslint --fix --quiet "$file_path" 2>/dev/null; then
+          echo "    ESLint --fix applied successfully"
+          formatted=true
+        else
+          echo "    Warning: ESLint --fix failed for $file_path"
+        fi
+      fi
+
+      # Prettier for these files (if available)
+      if [[ "$HAS_PRETTIER" == "true" ]]; then
+        if npx prettier --write --loglevel silent "$file_path" 2>/dev/null; then
+          echo "    Prettier applied successfully"
+          formatted=true
+        else
+          echo "    Warning: Prettier failed for $file_path"
+        fi
+      fi
+      ;;
+    py)
+      # Black for Python files
+      if [[ "$HAS_BLACK" == "true" ]]; then
+        if black --quiet "$file_path" 2>/dev/null; then
+          echo "    Black applied successfully"
+          formatted=true
+        else
+          echo "    Warning: Black failed for $file_path"
+        fi
+      elif [[ "$HAS_PRETTIER" == "true" ]]; then
+        # Fallback to Prettier if Black not available
+        if npx prettier --write --loglevel silent "$file_path" 2>/dev/null; then
+          echo "    Prettier applied successfully"
+          formatted=true
+        fi
+      fi
+      ;;
+    rs)
+      # rustfmt for Rust files
+      if [[ "$HAS_RUSTFMT" == "true" ]]; then
+        if rustfmt "$file_path" 2>/dev/null; then
+          echo "    rustfmt applied successfully"
+          formatted=true
+        else
+          echo "    Warning: rustfmt failed for $file_path"
+        fi
       fi
       ;;
     *)
-      # ESLint is generally for JS/TS, so skip for other file types
-      echo "    Skipping ESLint for .$file_extension file: $file_path"
+      # For other file types, try Prettier if available
+      if [[ "$HAS_PRETTIER" == "true" ]]; then
+        if npx prettier --write --loglevel silent "$file_path" 2>/dev/null; then
+          echo "    Prettier applied successfully"
+          formatted=true
+        else
+          echo "    Prettier skipped $file_path (unsupported file type)"
+        fi
+      fi
       ;;
   esac
 
-  # Run Prettier --write
-  # --loglevel silent to avoid noise if a file type isn't supported by Prettier
-  # 2>/dev/null redirects stderr to suppress potential errors/warnings from Prettier
-  # if it doesn't support the file type.
-  if npx prettier --write --loglevel silent "$file_path" 2>/dev/null; then
-    echo "    Prettier applied successfully to $file_path"
-  else
-    echo "    Warning: Prettier failed or did not apply to $file_path. This might be expected for some file types."
+  if [[ "$formatted" == "false" ]]; then
+    echo "    No formatters applied to $file_path"
   fi
 
-  # Optionally remove indentaion except for .md, .txt, .py files
+  # Optionally remove indentation except for .md, .txt, .py files
   if [[ "$REMOVE_INDENTATION" == "true" && "$file_extension" != "md" && "$file_extension" != "txt" && "$file_extension" != "py" ]]; then
     sed -i.bak 's/^[ \t]*//' "$file_path"
+    echo "    Indentation removed"
   fi
 }
 
+# Detect available formatters before processing
+echo "Detecting available formatters..."
+detect_formatters
+
+# Warn if no formatters detected
+if [[ "$HAS_PRETTIER" == "false" && "$HAS_ESLINT" == "false" && "$HAS_BLACK" == "false" && "$HAS_RUSTFMT" == "false" ]]; then
+  echo "Warning: No formatter config files detected. The script will still attempt three-way merge but without formatting."
+  echo "Consider adding .prettierrc, .eslintrc, pyproject.toml, or rustfmt.toml to enable automatic formatting."
+fi
 
 # Get a list of all files that are currently in a merge conflict state (`--diff-filter=U`).
 # We are now checking all conflicted files, and Prettier/ESLint will determine applicability.
