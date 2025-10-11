@@ -1,0 +1,7 @@
+# Ignores for VitePress site
+.yarn
+node_modules
+dist
+.vitepress/dist
+.vitepress/cache
+
