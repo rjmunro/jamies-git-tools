@@ -1,6 +1,8 @@
 #!/bin/bash
 
 # git-bisect-rebase
+# Copyright (c) 2025 Robert (Jamie) Munro
+# Licensed under the MIT License
 #
 # This script attempts to rebase the current branch onto a specified target branch.
 # If the initial rebase fails, it uses git-bisect to find the earliest commit

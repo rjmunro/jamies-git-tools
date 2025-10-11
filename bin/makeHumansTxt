@@ -1,4 +1,11 @@
 #!/bin/bash
+
+# makeHumansTxt
+# Copyright (c) 2025 Robert (Jamie) Munro
+# Licensed under the MIT License
+#
+# Generates a humans.txt file listing contributors ordered by commit count
+
 set -eu
 cat <<EOF
 Made by the following team:

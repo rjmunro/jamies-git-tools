@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
 """
 git-grep-blame.py
+Copyright (c) 2025 Robert (Jamie) Munro
+Licensed under the MIT License
 
 Search a repository with `git grep` and show `git blame` metadata for each matched line.
 - Calls `git blame --line-porcelain` once per file (fast when there are many matches in the same file).

@@ -1,8 +1,14 @@
 #!/bin/bash
-set -euo pipefail
-# watch-ci - Watch the CI status of a branch and notify when it's done
+
+# watch-ci
+# Copyright (c) 2025 Robert (Jamie) Munro
+# Licensed under the MIT License
+#
+# Watch the CI status of a branch and notify when it's done
 # Usage: watch-ci [branch]
 # If no branch is specified, it will use the current branch
+
+set -euo pipefail
 # Requires: hub (https://github.com/github/hub)
 # Uses osascript and say from macOS to display notifications and speak the status
 # Requires: notify-send or zenity for Linux to display notifications

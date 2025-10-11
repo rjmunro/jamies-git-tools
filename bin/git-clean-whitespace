@@ -1,7 +1,12 @@
 #!/bin/bash
-set -eu
 
+# git-clean-whitespace
+# Copyright (c) 2025 Robert (Jamie) Munro
+# Licensed under the MIT License
+#
 # Clean trailing whitespace from files that have changed
+
+set -eu
 #for i in `git diff --name-only`
 #do
 #  sed -i "s/[\t ]+$/" $i

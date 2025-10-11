@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
-#
+
 # git-branch-space-report.sh
+# Copyright (c) 2025 Robert (Jamie) Munro
+# Licensed under the MIT License
 #
 # Estimate how much unique *packed* data each branch keeps alive compared to a base branch.
 # Branches fully merged into the base are ignored.

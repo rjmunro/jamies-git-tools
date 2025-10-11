@@ -1,6 +1,11 @@
 #!/bin/bash
 
+# git-rebase-all
+# Copyright (c) 2025 Robert (Jamie) Munro
+# Licensed under the MIT License
+#
 # Usage: git rebase-all [--include-pushed] [base-branch]
+
 SKIP_PUSHED=true
 BASE_BRANCH=""
 

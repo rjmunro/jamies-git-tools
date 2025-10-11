@@ -1,4 +1,9 @@
 #!/bin/bash
+
+# git-resolve-formatting-conflicts
+# Copyright (c) 2025 Robert (Jamie) Munro
+# Licensed under the MIT License
+#
 # This script automatically resolves formatting-related Git merge conflicts
 # in various file types by applying Prettier and ESLint (if applicable) to
 # all conflicting versions (base, ours, theirs) before performing a three-way merge.

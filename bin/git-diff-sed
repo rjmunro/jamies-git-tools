@@ -1,7 +1,10 @@
 #!/bin/bash
 
-# A script to run `git diff` with a sed replacement on the "old" file.
+# git-diff-sed
+# Copyright (c) 2025 Robert (Jamie) Munro
+# Licensed under the MIT License
 #
+# A script to run `git diff` with a sed replacement on the "old" file.
 # Useful if there is a systematic change you want to ignore, e.g. renaming a variable.
 #
 # Usage: git-diff-sed <sed_command> <file_path> [<git_diff_options>...]

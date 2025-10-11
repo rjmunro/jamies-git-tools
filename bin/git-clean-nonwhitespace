@@ -1,7 +1,12 @@
 #!/bin/bash
-set -eu
 
+# git-clean-nonwhitespace
+# Copyright (c) 2025 Robert (Jamie) Munro
+# Licensed under the MIT License
+#
 # Leave only whitespace changes in a commit
 # Useful if while you fix something you make some indentation fixes elsewhere in the file, and you want to commit the indentation fixes first in a separate commit
+
+set -eu
 
 git apply --cached -R <(git diff --cached -w)

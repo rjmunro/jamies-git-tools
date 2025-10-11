@@ -1,4 +1,11 @@
 #!/bin/bash
+
+# listgits
+# Copyright (c) 2025 Robert (Jamie) Munro
+# Licensed under the MIT License
+#
+# Lists all git repositories in the home directory
+
 set -eu
 IFS='
 '
