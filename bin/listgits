@@ -5,6 +5,8 @@
 # Licensed under the MIT License
 #
 # Lists all git repositories in the home directory
+#
+# Part of Jamie's Git Tools: https://github.com/rjmunro/jamies-git-tools
 
 set -eu
 IFS='

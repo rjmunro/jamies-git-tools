@@ -5,6 +5,8 @@
 # Licensed under the MIT License
 #
 # Generates a humans.txt file listing contributors ordered by commit count
+#
+# Part of Jamie's Git Tools: https://github.com/rjmunro/jamies-git-tools
 
 set -eu
 cat <<EOF

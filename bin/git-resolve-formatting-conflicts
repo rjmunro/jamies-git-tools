@@ -7,6 +7,8 @@
 # This script automatically resolves formatting-related Git merge conflicts
 # in various file types by applying Prettier and ESLint (if applicable) to
 # all conflicting versions (base, ours, theirs) before performing a three-way merge.
+#
+# Part of Jamie's Git Tools: https://github.com/rjmunro/jamies-git-tools
 
 # Exit immediately if a command exits with a non-zero status.
 # Treat unset variables as an error when substituting.

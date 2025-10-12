@@ -7,6 +7,8 @@
 # Estimate how much unique *packed* data each branch keeps alive compared to a base branch.
 # Branches fully merged into the base are ignored.
 #
+# Part of Jamie's Git Tools: https://github.com/rjmunro/jamies-git-tools
+#
 # Usage:
 #   ./git-branch-space-report.sh
 #   ./git-branch-space-report.sh <base>

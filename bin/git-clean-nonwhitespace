@@ -6,6 +6,8 @@
 #
 # Leave only whitespace changes in a commit
 # Useful if while you fix something you make some indentation fixes elsewhere in the file, and you want to commit the indentation fixes first in a separate commit
+#
+# Part of Jamie's Git Tools: https://github.com/rjmunro/jamies-git-tools
 
 set -eu
 

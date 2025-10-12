@@ -5,6 +5,8 @@
 # Licensed under the MIT License
 #
 # Clean trailing whitespace from files that have changed
+#
+# Part of Jamie's Git Tools: https://github.com/rjmunro/jamies-git-tools
 
 set -eu
 #for i in `git diff --name-only`

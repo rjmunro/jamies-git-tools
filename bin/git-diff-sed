@@ -11,6 +11,8 @@
 #
 # Example, to hide changes from "old-text" to "new-text":
 #   git-diff-sed 's/old-text/new-text/g' path/to/your/file.txt --word-diff
+#
+# Part of Jamie's Git Tools: https://github.com/rjmunro/jamies-git-tools
 
 SED_COMMAND=$1
 FILE_PATH=$2

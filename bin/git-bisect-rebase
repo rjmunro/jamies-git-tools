@@ -8,6 +8,8 @@
 # If the initial rebase fails, it uses git-bisect to find the earliest commit
 # on the current branch that can be successfully rebased onto the target branch.
 # It then performs the rebase up to that point.
+#
+# Part of Jamie's Git Tools: https://github.com/rjmunro/jamies-git-tools
 
 set -x # Exit immediately if a command exits with a non-zero status
 
@@ -96,7 +98,7 @@ fi
 # If we stashed changes, pop them back
 if [ "$STASH_PERFORMED" = true ]; then
     echo "Rebase was successful. Restoring stashed changes..."
-    git stash pop 
+    git stash pop
 fi
 
 echo "Script finished. Run 'git bisect reset' to clean up the bisect state."

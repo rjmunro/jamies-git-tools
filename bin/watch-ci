@@ -7,6 +7,8 @@
 # Watch the CI status of a branch and notify when it's done
 # Usage: watch-ci [branch]
 # If no branch is specified, it will use the current branch
+#
+# Part of Jamie's Git Tools: https://github.com/rjmunro/jamies-git-tools
 
 set -euo pipefail
 # Requires: hub (https://github.com/github/hub)

@@ -8,6 +8,8 @@ Search a repository with `git grep` and show `git blame` metadata for each match
 - Calls `git blame --line-porcelain` once per file (fast when there are many matches in the same file).
 - Shows commit SHA, author name and a date (either relative like "2 weeks ago" or short date YYYY-MM-DD).
 
+Part of Jamie's Git Tools: https://github.com/rjmunro/jamies-git-tools
+
 Usage:
   git-grep-blame.py [options] <pattern> [<path> ...]
 

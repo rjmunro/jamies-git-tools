@@ -5,6 +5,8 @@
 # Licensed under the MIT License
 #
 # Usage: git rebase-all [--include-pushed] [base-branch]
+#
+# Part of Jamie's Git Tools: https://github.com/rjmunro/jamies-git-tools
 
 SKIP_PUSHED=true
 BASE_BRANCH=""
