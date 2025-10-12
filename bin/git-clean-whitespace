@@ -9,15 +9,11 @@
 # Part of Jamie's Git Tools: https://github.com/rjmunro/jamies-git-tools
 
 set -eu
-#for i in `git diff --name-only`
-#do
-#  sed -i "s/[\t ]+$/" $i
-#done
 
-# Remove changes from the index if they are only whitespace (including changes made above)
+
+# Remove changes from the index if they are only whitespace
 # Based on answer to this question
 # http://stackoverflow.com/questions/1751612/git-tool-to-remove-lines-from-staging-if-they-consist-only-of-changes-in-whitespa
-#clean=`git diff --cached -b | sed "s/^\+\(.*\)[\t ]+$/\1/"`
 clean=`git diff --cached -w -R`
 git apply --cached <(git diff --cached -R)
 echo "$clean" | git apply --cached -R -
