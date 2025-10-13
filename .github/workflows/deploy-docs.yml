@@ -19,6 +19,9 @@ jobs:
         with:
           fetch-depth: 0
 
+      - name: Enable Corepack
+        run: corepack enable
+
       - name: Setup Node.js
         uses: actions/setup-node@v5
         with:
@@ -30,7 +33,7 @@ jobs:
         uses: actions/configure-pages@v4
 
       - name: Install dependencies
-        run: cd website && yarn install --frozen-lockfile
+        run: cd website && yarn install --immutable
 
       - name: Build with VitePress
         run: cd website && yarn build

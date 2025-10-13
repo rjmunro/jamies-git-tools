@@ -2,6 +2,7 @@
   "name": "git-tools-website",
   "version": "1.0.0",
   "type": "module",
+  "packageManager": "yarn@4.10.3",
   "description": "Documentation website for Jamie's Git Tools",
   "scripts": {
     "dev": "vitepress dev",
