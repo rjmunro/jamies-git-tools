@@ -4,17 +4,138 @@
 # Copyright (c) 2025 Robert (Jamie) Munro
 # Licensed under the MIT License
 #
-# Generates a humans.txt file listing contributors ordered by commit count
+# Generates a humans.txt file listing contributors ordered by different metrics
 #
 # Part of Jamie's Git Tools: https://github.com/rjmunro/jamies-git-tools
 
 set -eu
+
+print_help() {
+  echo "Usage: $0 [--commits|--lines-added|--lines-current] [--show-counts]"
+  echo ""
+  echo "Options:"
+  echo "  --commits        Count by number of commits (fastest, default)"
+  echo "  --lines-added    Count by total lines added/changed in commits (slower)"
+  echo "  --lines-current  Count by lines currently remaining in codebase, based on git blame (very slow)"
+  echo "  --show-counts    Show the actual counts next to contributor names"
+  echo "  --help, -h       Show this help message"
+  echo ""
+  echo "Examples:"
+  echo "  $0                           # Default: count by commits"
+  echo "  $0 --lines-current          # Count by current lines of code"
+  echo "  $0 --lines-added --show-counts  # Show total lines added with counts"
+  exit 0
+}
+
+# Default options
+METHOD="commits"
+SHOW_COUNTS=false
+
+# Parse arguments
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --commits)
+      METHOD="commits"
+      shift
+      ;;
+    --lines-added)
+      METHOD="lines-added"
+      shift
+      ;;
+    --lines-current)
+      METHOD="lines-current"
+      shift
+      ;;
+    --show-counts)
+      SHOW_COUNTS=true
+      shift
+      ;;
+    --help|-h)
+      print_help
+      ;;
+    -*)
+      echo "Unknown option: $1"
+      print_help
+      ;;
+    *)
+      echo "Unknown argument: $1"
+      print_help
+      ;;
+  esac
+done
+
+count_by_commits() {
+  git log --format='%aN' | awk '{arr[$0]++} END{for (i in arr){print arr[i], i;}}' | sort -rn
+}
+
+count_by_lines_added() {
+  echo "Analyzing commit history (this may take a moment)..." >&2
+  git log --format='%aN' --numstat | awk '
+    /^[0-9]/ {
+      added += $1;
+      deleted += $2;
+    }
+    /^[A-Za-z]/ {
+      if (author != "") {
+        authors[author] += added + deleted;
+      }
+      author = $0;
+      added = 0;
+      deleted = 0;
+    }
+    END {
+      if (author != "") {
+        authors[author] += added + deleted;
+      }
+      for (i in authors) {
+        print authors[i], i;
+      }
+    }' | sort -rn
+}
+
+count_by_lines_current() {
+  echo "Analyzing current codebase (this may take a moment)..." >&2
+
+  # Get all tracked files (excluding binary files)
+  git ls-files | while read -r file; do
+    # Skip binary files
+    if file "$file" | grep -q "text" 2>/dev/null || [[ "$file" =~ \.(txt|md|json|js|ts|py|sh|yml|yaml|xml|html|css|scss|sass|java|c|cpp|h|hpp|go|rs|rb|php|sql)$ ]]; then
+      git blame --line-porcelain "$file" 2>/dev/null | grep "^author " | sed 's/^author //'
+    fi
+  done | awk '{arr[$0]++} END{for (i in arr){print arr[i], i;}}' | sort -rn
+}
+
+# Generate the contributor list based on selected method
+case "$METHOD" in
+  "commits")
+    contributors=$(count_by_commits)
+    metric_description="commits"
+    ;;
+  "lines-added")
+    contributors=$(count_by_lines_added)
+    metric_description="lines added/changed"
+    ;;
+  "lines-current")
+    contributors=$(count_by_lines_current)
+    metric_description="lines currently in codebase"
+    ;;
+esac
+
+# Output the humans.txt content
 cat <<EOF
 Made by the following team:
 
 EOF
-# Lists authors of a git project in order of commits
-git log --format='* %aN' | awk '{arr[$0]++} END{for (i in arr){print arr[i], i;}}' | sort -rn | gcut -d\  -f2-
+
+if [[ "$SHOW_COUNTS" == "true" ]]; then
+  echo "$contributors" | while read -r count name; do
+    printf "* %s (%d %s)\n" "$name" "$count" "$metric_description"
+  done
+else
+  echo "$contributors" | while read -r count name; do
+    echo "* $name"
+  done
+fi
 
 cat <<EOF
 
