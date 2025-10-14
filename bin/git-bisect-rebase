@@ -11,7 +11,7 @@
 #
 # Part of Jamie's Git Tools: https://github.com/rjmunro/jamies-git-tools
 
-set -x # Exit immediately if a command exits with a non-zero status
+set -euo pipefail # Exit immediately if a command exits with a non-zero status
 
 # --- INTERNAL BISECT TEST FUNCTION ---
 # This part is executed when the script is called with the --bisect-test parameter
