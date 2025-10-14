@@ -82,7 +82,7 @@ detect_formatters() {
   fi
 
   # Check for ESLint config files
-  if [[ -f .eslintrc || -f .eslintrc.js || -f .eslintrc.json || -f .eslintrc.yml || -f .eslintrc.yaml || -f eslint.config.js ]] || grep -q '"eslint"' package.json 2>/dev/null; then
+  if [[ -f .eslintrc || -f .eslintrc.cjs || -f .eslintrc.js || -f .eslintrc.json || -f .eslintrc.yml || -f .eslintrc.yaml || -f eslint.config.js || -f eslint.config.mjs ]] || grep -q '"eslint"' package.json 2>/dev/null; then
     if command -v npx >/dev/null 2>&1 && npx eslint --version >/dev/null 2>&1; then
       has_eslint=true
       echo "  Detected: ESLint (config found)"
