@@ -65,7 +65,7 @@ while [[ $# -gt 0 ]]; do
 done
 
 count_by_commits() {
-  git log --format='%aN' | awk '{arr[$0]++} END{for (i in arr){print arr[i], i;}}' | sort -rn
+  git log --format='%aN' | awk '{arr[$0]++} END{for (i in arr){print arr[i] "\t" i;}}' | sort -rn
 }
 
 count_by_lines_added() {
@@ -88,7 +88,7 @@ count_by_lines_added() {
         authors[author] += added + deleted;
       }
       for (i in authors) {
-        print authors[i], i;
+        print authors[i] "\t" i;
       }
     }' | sort -rn
 }
@@ -102,7 +102,7 @@ count_by_lines_current() {
     if file "$file" | grep -q "text" 2>/dev/null || [[ "$file" =~ \.(txt|md|json|js|ts|py|sh|yml|yaml|xml|html|css|scss|sass|java|c|cpp|h|hpp|go|rs|rb|php|sql)$ ]]; then
       git blame --line-porcelain "$file" 2>/dev/null | grep "^author " | sed 's/^author //'
     fi
-  done | awk '{arr[$0]++} END{for (i in arr){print arr[i], i;}}' | sort -rn
+  done | awk '{arr[$0]++} END{for (i in arr){print arr[i] "\t" i;}}' | sort -rn
 }
 
 # Generate the contributor list based on selected method
@@ -128,11 +128,11 @@ Made by the following team:
 EOF
 
 if [[ "$SHOW_COUNTS" == "true" ]]; then
-  echo "$contributors" | while read -r count name; do
-    printf "* %s (%d %s)\n" "$name" "$count" "$metric_description"
+  echo "$contributors" | while IFS=$'\t' read -r count name; do
+    printf "* %s (%s %s)\n" "$name" "$count" "$metric_description"
   done
 else
-  echo "$contributors" | while read -r count name; do
+  echo "$contributors" | while IFS=$'\t' read -r count name; do
     echo "* $name"
   done
 fi
