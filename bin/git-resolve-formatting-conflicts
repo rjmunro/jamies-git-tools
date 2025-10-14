@@ -193,7 +193,7 @@ format_file() {
 
   # Optionally remove indentation except for .md, .txt, .py files
   if [[ "$REMOVE_INDENTATION" == "true" && "$file_extension" != "md" && "$file_extension" != "txt" && "$file_extension" != "py" ]]; then
-    sed -i.bak 's/^[ \t]*//' "$file_path"
+    sed -i.bak 's/^[ 	]*//' "$file_path"
     echo "    Indentation removed"
   fi
 }
