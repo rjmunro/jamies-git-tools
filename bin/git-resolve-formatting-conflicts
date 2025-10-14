@@ -17,6 +17,7 @@
 set -euo pipefail
 
 REMOVE_INDENTATION=false
+RELATIVE=false
 file_globs=()
 
 print_help() {
@@ -34,6 +35,10 @@ while [[ $# -gt 0 ]]; do
   case "$1" in
     --remove-indentation)
       REMOVE_INDENTATION=true
+      shift
+      ;;
+    --relative)
+      RELATIVE=true
       shift
       ;;
     --help|-h)
@@ -55,8 +60,11 @@ done
 # Determine the root directory of the Git repository.
 # This ensures the script can be run from any subdirectory within the repo.
 ROOT="$(git rev-parse --show-toplevel)"
-# Change the current directory to the Git repository root.
-cd "$ROOT"
+
+if [[ "$RELATIVE" != "true" ]]; then
+  # Change the current directory to the Git repository root.
+  cd "$ROOT"
+fi
 
 # --- Detect available formatters based on config files ---
 detect_formatters() {
@@ -203,9 +211,9 @@ fi
 # Get a list of all files that are currently in a merge conflict state (`--diff-filter=U`).
 # We are now checking all conflicted files, and Prettier/ESLint will determine applicability.
 if [ ${#file_globs[@]} -eq 0 ]; then
-  conflicted_files=$(git diff --name-only --diff-filter=U)
+  conflicted_files=$(git diff --name-only --diff-filter=U --relative)
 else
-  conflicted_files=$(git diff --name-only --diff-filter=U -- "${file_globs[@]}")
+  conflicted_files=$(git diff --name-only --diff-filter=U --relative -- "${file_globs[@]}")
 fi
 
 # Check if the 'conflicted_files' variable is empty.
@@ -223,9 +231,11 @@ for file in $conflicted_files; do
   base_formatted_temp=$(mktemp)
   theirs_formatted_temp=$(mktemp)
 
+  GIT_PREFIX="$(git rev-parse --show-prefix)"
+
   # --- Process and Format the 'Base' Version (Common Ancestor) ---
   # Extract the base version's content and write it directly to the actual file path.
-  git show ":1:$file" > "$file"
+  git show ":1:${GIT_PREFIX}$file" > "$file"
   # Format the file in-place. Prettier/ESLint can now find their configs relative to $file.
   format_file "$file"
   # Copy the *formatted* content of the base version to a temporary file.
@@ -233,7 +243,7 @@ for file in $conflicted_files; do
 
   # --- Process and Format the 'Theirs' Version (Incoming) ---
   # Extract the theirs version's content and write it directly to the actual file path.
-  git show ":3:$file" > "$file"
+  git show ":3:${GIT_PREFIX}$file" > "$file"
   # Format the file in-place.
   format_file "$file"
   # Copy the *formatted* content of the theirs version to a temporary file.
@@ -241,7 +251,7 @@ for file in $conflicted_files; do
 
   # --- Process and Format the 'Local' Version (Ours) ---
   # Extract the ours version's content and write it directly to the actual file path.
-  git show ":2:$file" > "$file"
+  git show ":2:${GIT_PREFIX}$file" > "$file"
   # Format the file in-place. This '$file' will now contain your formatted local version
   # and will serve as the primary file for the three-way merge (modified in-place by git-merge-file).
   format_file "$file"
