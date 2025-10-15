@@ -59,8 +59,14 @@ git resolve-formatting-conflicts "*.js" "src/**/*.ts"
 # Remove indentation after formatting (useful for structural conflicts)
 git resolve-formatting-conflicts --remove-indentation
 
+# Show file paths relative to current directory
+git resolve-formatting-conflicts --relative
+
+# Run from current directory (when config files are here, not in repo root)
+git resolve-formatting-conflicts --relative
+
 # Combine options
-git resolve-formatting-conflicts --remove-indentation "*.js" "*.ts"
+git resolve-formatting-conflicts --remove-indentation --relative "*.js" "*.ts"
 
 # Show help
 git resolve-formatting-conflicts --help
@@ -71,6 +77,10 @@ git resolve-formatting-conflicts --help
 - `--remove-indentation`: Removes all leading whitespace from lines (except for .md, .txt, .py
   files). Useful when conflicts are caused by code being wrapped in new blocks (like if statements).
   You should re-run your formatter after using this option to restore proper indentation.
+- `--relative`: Run formatting tools from current directory instead of repository root. Use this
+  when your ESLint/Prettier configuration files are located in the current directory rather than the
+  repository root. This ensures formatters can find their config files and work correctly in
+  monorepos or projects with multiple formatter configurations.
 - `--help` or `-h`: Display usage information
 - `file-glob ...`: Only process conflicted files matching the specified glob patterns
 
@@ -90,6 +100,30 @@ The script will process all conflicted files. If it successfully resolves a conf
 be updated in your working tree, and the resolution will be staged ready to continue the merge. If
 actual logic conflicts remain after formatting, the file will still show merge conflict markers, but
 the surrounding code will be consistently formatted, making manual resolution easier.
+
+## When to Use `--relative`
+
+Use the `--relative` option when your formatting tool configuration files (.eslintrc, .prettierrc,
+etc.) are **not** in the repository root:
+
+- **Monorepos**: When you have multiple packages/projects, each with their own formatter configs
+- **Subdirectory projects**: When the main project lives in a subdirectory of the Git repository
+- **Multiple configs**: When different parts of your repo use different formatting rules
+
+**Example scenario**: Your repo structure is:
+
+```text
+my-repo/
+├── packages/
+│   ├── frontend/
+│   │   ├── eslint.config.mjs  ← Config here, not repo root
+│   │   └── src/
+│   └── backend/
+│       └── src/
+└── README.md
+```
+
+Run from `packages/frontend/` with `--relative` so ESLint finds its config file.
 
 ## Important Notes
 

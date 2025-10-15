@@ -21,10 +21,12 @@ RELATIVE=false
 file_globs=()
 
 print_help() {
-  echo "Usage: $0 [-help|-h] [--remove-indentation] [file-glob ...]"
+  echo "Usage: $0 [-help|-h] [--remove-indentation] [--relative] [file-glob ...]"
   echo "  --remove-indentation   Remove indentation from non-md/txt/py files after formatting."
   echo "                         Useful where indentation has caused conflicts, e.g. because something has been wrapped in an if statement."
   echo "                         You should manually re-apply a formatting tool to fix indentation after running this script."
+  echo "  --relative             Run formatting tools from current directory instead of repository root."
+  echo "                         Use when ESLint/Prettier configs are in current directory, not repo root."
   echo "  --help, -h             Show this help message."
   echo "  file-glob              Only process conflicted files matching these globs. By default all conflicted files are processed."
   exit 1
