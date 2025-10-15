@@ -5,16 +5,64 @@
 # Licensed under the MIT License
 #
 # Clean trailing whitespace from files that have changed
+# Usage: git-clean-whitespace [filename]
+# If filename is provided, only process that file. Otherwise process all staged files.
 #
 # Part of Jamie's Git Tools: https://github.com/rjmunro/jamies-git-tools
 
 set -eu
 
+print_help() {
+  echo "Usage: $0 [filename]"
+  echo ""
+  echo "Remove whitespace-only changes from the staging area."
+  echo ""
+  echo "Arguments:"
+  echo "  filename    Optional. Only process the specified file."
+  echo "              If not provided, processes all staged files."
+  echo ""
+  echo "Examples:"
+  echo "  $0                    # Clean whitespace from all staged files"
+  echo "  $0 src/main.js        # Clean whitespace only from src/main.js"
+  echo "  $0 --help             # Show this help"
+  exit 0
+}
+
+# Parse arguments
+if [[ $# -gt 0 ]]; then
+  case "$1" in
+    --help|-h)
+      print_help
+      ;;
+    -*)
+      echo "Unknown option: $1"
+      print_help
+      ;;
+    *)
+      TARGET_FILE="$1"
+      ;;
+  esac
+fi
 
 # Remove changes from the index if they are only whitespace
 # Based on answer to this question
 # http://stackoverflow.com/questions/1751612/git-tool-to-remove-lines-from-staging-if-they-consist-only-of-changes-in-whitespa
-clean=`git diff --cached -w -R`
-git apply --cached <(git diff --cached -R)
-echo "$clean" | git apply --cached -R -
+
+if [[ -n "${TARGET_FILE:-}" ]]; then
+  # Process only the specified file
+  if ! git diff --cached --name-only | grep -q "^${TARGET_FILE}$"; then
+    echo "File '${TARGET_FILE}' is not staged for commit."
+    exit 1
+  fi
+
+  clean=$(git diff --cached -w -R -- "${TARGET_FILE}")
+  git apply --cached <(git diff --cached -R -- "${TARGET_FILE}")
+  echo "$clean" | git apply --cached -R -
+else
+  # Process all staged files (original behavior)
+  clean=$(git diff --cached -w -R)
+  git apply --cached <(git diff --cached -R)
+  echo "$clean" | git apply --cached -R -
+fi
+
 clean=

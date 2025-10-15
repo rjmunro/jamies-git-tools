@@ -9,11 +9,25 @@ This script is the complement to `git-clean-nonwhitespace`. It removes whitespac
 the staging area while preserving logical code changes. This is useful when you want to commit
 substantive changes without including incidental whitespace modifications.
 
+You can process all staged files or target a specific file.
+
 ## Usage
 
 ```bash
+# Remove whitespace changes from all staged files
 git clean-whitespace
+
+# Remove whitespace changes from a specific file only
+git clean-whitespace src/main.js
+
+# Show help
+git clean-whitespace --help
 ```
+
+## Options
+
+- `filename`: Optional. Only process the specified file. If not provided, processes all staged files.
+- `--help`, `-h`: Show usage information
 
 ## How It Works
 
@@ -21,15 +35,28 @@ The script identifies whitespace-only changes using `git diff --cached -w -R` an
 changes to remove them from the staging area. This leaves only the meaningful code changes staged
 for commit.
 
-## Use Case Example
+When a filename is specified, the script:
+
+1. Checks if the file is actually staged for commit
+2. Processes only that file instead of all staged files
+3. Exits with an error if the specified file is not staged
+
+## Use Case Examples
+
+### Process All Files
 
 1. You're working on a feature and your editor automatically fixes whitespace
 2. You make logical code changes along with these automatic whitespace fixes
 3. You stage all changes with `git add .`
 4. You want to commit only the logical changes, not the whitespace fixes
 5. Run `git clean-whitespace` to remove whitespace changes from staging
-6. Commit the logical changes: `git commit -m "Add new feature"`
-7. If desired, stage and commit whitespace changes separately later
+
+### Process Specific File
+
+1. You've made changes to multiple files
+2. Only one file has unwanted whitespace changes mixed with real changes
+3. Run `git clean-whitespace src/problematic-file.js` to clean just that file
+4. Other staged files remain unchanged
 
 ## Requirements
 
