@@ -16,7 +16,7 @@ set -euo pipefail
 # Requires: notify-send or zenity for Linux to display notifications
 
 QUIET=false
-BRANCH=""
+BRANCHES=()
 
 # Parse arguments
 while [[ $# -gt 0 ]]; do
@@ -26,16 +26,22 @@ while [[ $# -gt 0 ]]; do
       shift
       ;;
     --help|-h)
-      echo "Usage: $0 [--quiet] [branch]"
+      echo "Usage: $0 [--quiet] [branch1] [branch2] ..."
       echo ""
-      echo "Watch the CI status of a branch and notify when it's done."
+      echo "Watch the CI status of one or more branches and notify when they're done."
       echo ""
       echo "Options:"
       echo "  --quiet, -q    Suppress audio notifications"
       echo "  --help, -h     Show this help"
       echo ""
       echo "Arguments:"
-      echo "  branch         Branch to monitor (default: current branch)"
+      echo "  branch         Branch(es) to monitor (default: current branch)"
+      echo ""
+      echo "Examples:"
+      echo "  $0                    # Monitor current branch"
+      echo "  $0 feature-branch     # Monitor one branch"
+      echo "  $0 main develop       # Monitor multiple branches"
+      echo "  $0 --quiet branch1 branch2  # Monitor quietly"
       exit 0
       ;;
     -*)
@@ -44,71 +50,184 @@ while [[ $# -gt 0 ]]; do
       exit 1
       ;;
     *)
-      if [[ -z "$BRANCH" ]]; then
-        BRANCH="$1"
-      else
-        echo "Error: Multiple branch names provided"
-        exit 1
-      fi
+      BRANCHES+=("$1")
       shift
       ;;
   esac
 done
 
-# If no branch specified, use current branch
-if [[ -z "$BRANCH" ]]; then
-  BRANCH=$(git rev-parse --abbrev-ref HEAD)
+# If no branches specified, use current branch
+if [[ ${#BRANCHES[@]} -eq 0 ]]; then
+  BRANCHES=($(git rev-parse --abbrev-ref HEAD))
 fi
 
 PROJECT="$(basename "$(git rev-parse --show-toplevel)")"
-SHORT_BRANCH="${BRANCH#rjmunro/}"
 
-EXIT_CODE=0
-STATUS=$(hub ci-status "$BRANCH" || EXIT_CODE=$?)
+# Function to send notification for a completed branch
+send_notification() {
+  local branch="$1"
+  local status="$2"
+  local short_branch="${branch#rjmunro/}"
 
-# Retry loop
-TRIES=0
+  # If we are on MacOS, use `terminal-notifier` to display a notification and `say` to speak the status
+  if [ "$(uname)" = "Darwin" ]; then
+    terminal-notifier -title "CI Status for $PROJECT" -message "Branch $short_branch CI Status: $status"
+    if [[ "$QUIET" != "true" ]]; then
+      say "CI done on branch $short_branch. Status: $status"
+    fi
+
+  # If notify-send is available, use it to display a notification
+  elif command -v notify-send &> /dev/null; then
+    notify-send "Branch $short_branch CI Status: $status" "CI Status"
+
+  # If notify-send is not available, use zenity to display a notification
+  elif command -v zenity &> /dev/null; then
+    zenity --notification --text "Branch $short_branch CI Status: $status" --title "CI Status"
+
+  # If we are on Windows, use PowerShell to display a notification
+  elif [ "$(uname)" = "MINGW64_NT-10.0" ]; then
+    powershell -Command "New-BurntToastNotification -Text 'Branch $short_branch CI Status: $status'"
+    if [[ "$QUIET" != "true" ]]; then
+      powershell -Command "Add-Type -AssemblyName System.Speech; (New-Object System.Speech.Synthesis.SpeechSynthesizer).Speak('CI done on branch $short_branch. Status: $status')"
+    fi
+  fi
+}
+
+# Function to open PR page for a branch
+open_pr_page() {
+  local branch="$1"
+  echo "Opening PR page for $branch..."
+  hub pr show -h "$branch" || hub compare "$branch"
+}
+
+# Initialize tracking arrays (compatible with bash 3.2+)
+PENDING_BRANCHES=()      # Array of branches still being monitored
+COMPLETED_BRANCHES=()    # Array of completed branches
+BRANCH_TRIES=()          # Track tries per branch (parallel array)
+BRANCH_STATUS=()         # Track current status per branch (parallel array)
+OVERALL_EXIT_CODE=0
+
+# Initialize all branches
+for branch in "${BRANCHES[@]}"; do
+  PENDING_BRANCHES+=("$branch")
+  BRANCH_TRIES+=(0)
+  BRANCH_STATUS+=("")
+  echo "Starting to monitor: $branch"
+done
+
+# We need to track final status differently since we use parallel arrays
+# Let's create a simple status tracking approach
+COMPLETED_STATUS=()    # Track final status for completed branches
+
+# Initialize completed status array
+for branch in "${BRANCHES[@]}"; do
+  COMPLETED_STATUS+=("")
+done
+
+# Constants
 MAX_INITIAL_TRIES=5
+CURRENT_BRANCH_INDEX=0
 
-while true; do
-  if { [ "$TRIES" -lt "$MAX_INITIAL_TRIES" ] && { [ "$STATUS" = "no status" ] || [ "$STATUS" = "pending" ]; }; } \
-     || { [ "$TRIES" -ge "$MAX_INITIAL_TRIES" ] && [ "$STATUS" = "pending" ]; }; then
-    echo "$STATUS ($BRANCH)"
-    sleep 15
-    STATUS=$(hub ci-status "$BRANCH" || EXIT_CODE=$?)
-    TRIES=$((TRIES + 1))
+# Main monitoring loop
+while [[ ${#PENDING_BRANCHES[@]} -gt 0 ]]; do
+  # Get the current branch to check (round-robin)
+  if [[ $CURRENT_BRANCH_INDEX -ge ${#PENDING_BRANCHES[@]} ]]; then
+    CURRENT_BRANCH_INDEX=0
+  fi
+
+  branch="${PENDING_BRANCHES[$CURRENT_BRANCH_INDEX]}"
+
+  EXIT_CODE=0
+  STATUS=$(hub ci-status "$branch" 2>/dev/null || EXIT_CODE=$?)
+  BRANCH_STATUS[$CURRENT_BRANCH_INDEX]="$STATUS"
+
+  # Determine if this branch should continue being monitored
+  TRIES=${BRANCH_TRIES[$CURRENT_BRANCH_INDEX]}
+
+  if [ "$STATUS" = "pending" ] || { [ "$TRIES" -lt "$MAX_INITIAL_TRIES" ] && [ "$STATUS" = "no status" ]; }; then
+    # Still pending, keep monitoring
+    echo "$STATUS ($branch)"
+    BRANCH_TRIES[$CURRENT_BRANCH_INDEX]=$((TRIES + 1))
+
+    # Move to next branch and sleep 15 seconds
+    CURRENT_BRANCH_INDEX=$((CURRENT_BRANCH_INDEX + 1))
+    if [[ ${#PENDING_BRANCHES[@]} -gt 0 ]]; then
+      sleep 15
+    fi
   else
-    break
+    # Branch completed (success, failure, or error)
+    echo "$STATUS ($branch) - COMPLETED"
+
+    # Remove this branch from pending arrays (remove at current index)
+    NEW_PENDING=()
+    NEW_TRIES=()
+    NEW_STATUS=()
+    for i in "${!PENDING_BRANCHES[@]}"; do
+      if [[ $i -ne $CURRENT_BRANCH_INDEX ]]; then
+        NEW_PENDING+=("${PENDING_BRANCHES[$i]}")
+        NEW_TRIES+=("${BRANCH_TRIES[$i]}")
+        NEW_STATUS+=("${BRANCH_STATUS[$i]}")
+      fi
+    done
+
+    # Update arrays
+    PENDING_BRANCHES=("${NEW_PENDING[@]}")
+    BRANCH_TRIES=("${NEW_TRIES[@]}")
+    BRANCH_STATUS=("${NEW_STATUS[@]}")
+
+    # Adjust current index if we removed a branch before it
+    if [[ $CURRENT_BRANCH_INDEX -gt 0 ]] && [[ $CURRENT_BRANCH_INDEX -ge ${#PENDING_BRANCHES[@]} ]]; then
+      CURRENT_BRANCH_INDEX=0
+    fi
+
+    COMPLETED_BRANCHES+=("$branch")
+
+    # Store the final status for this branch
+    # Find the original index in the BRANCHES array
+    for i in "${!BRANCHES[@]}"; do
+      if [[ "${BRANCHES[$i]}" == "$branch" ]]; then
+        COMPLETED_STATUS[$i]="$STATUS"
+        break
+      fi
+    done
+
+    # Send notification
+    send_notification "$branch" "$STATUS"
+
+    # Open PR page for this branch
+    open_pr_page "$branch" &
+
+    # Track exit code (non-zero if any branch failed)
+    if [[ $EXIT_CODE -ne 0 ]]; then
+      OVERALL_EXIT_CODE=$EXIT_CODE
+    fi
+
+    # Show summary if we have both completed and pending branches
+    if [[ ${#COMPLETED_BRANCHES[@]} -gt 0 && ${#PENDING_BRANCHES[@]} -gt 0 ]]; then
+      echo "--- Completed: ${#COMPLETED_BRANCHES[@]}, Still monitoring: ${#PENDING_BRANCHES[@]} ---"
+    fi
+
+    # Don't sleep - immediately check next branch after a completion
+    echo "Branch completed, checking next branch immediately..."
   fi
 done
 
-echo "$STATUS ($BRANCH)"
+echo ""
+echo "All branches completed!"
+echo "Completed branches: ${COMPLETED_BRANCHES[*]}"
 
-# Open the pull request page in the browser
-hub pr show -h "$BRANCH" || hub compare "$BRANCH"
+# Final summary
+echo ""
+for i in "${!COMPLETED_BRANCHES[@]}"; do
+  branch="${COMPLETED_BRANCHES[$i]}"
+  # Find the status for this branch
+  for j in "${!BRANCHES[@]}"; do
+    if [[ "${BRANCHES[$j]}" == "$branch" ]]; then
+      status="${COMPLETED_STATUS[$j]}"
+      echo "Final status: $status ($branch)"
+      break
+    fi
+  done
+done
 
-# If we are on MacOS, use `terminal-notifier` to display a notification and `say` to speak say the status
-if [ "$(uname)" = "Darwin" ]; then
-  terminal-notifier -title "CI Status for $PROJECT" -message "Branch $SHORT_BRANCH CI Status: $STATUS"
-  if [[ "$QUIET" != "true" ]]; then
-    say "CI done on branch $SHORT_BRANCH. Status: $STATUS"
-  fi
-  exit $EXIT_CODE
-fi
-
-# If notify-send is available, use it to display a notification
-if command -v notify-send &> /dev/null; then
-  notify-send "Branch $SHORT_BRANCH CI Status: $STATUS" "CI Status"
-
-# If notify-send is not available, use zenity to display a notification
-elif command -v zenity &> /dev/null; then
-  zenity --notification --text "Branch $SHORT_BRANCH CI Status: $STATUS" --title "CI Status"
-
-# If we are on Windows, use PowerShell to display a notification
-elif [ "$(uname)" = "MINGW64_NT-10.0" ]; then
-  powershell -Command "New-BurntToastNotification -Text 'Branch $SHORT_BRANCH CI Status: $STATUS'"
-  if [[ "$QUIET" != "true" ]]; then
-    powershell -Command "Add-Type -AssemblyName System.Speech; (New-Object System.Speech.Synthesis.SpeechSynthesizer).Speak('CI done on branch $SHORT_BRANCH. Status: $STATUS')"
-  fi
-fi
-exit $EXIT_CODE
+exit $OVERALL_EXIT_CODE
