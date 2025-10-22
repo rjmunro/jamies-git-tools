@@ -15,11 +15,49 @@ set -euo pipefail
 # Uses osascript and say from macOS to display notifications and speak the status
 # Requires: notify-send or zenity for Linux to display notifications
 
-if [ $# -eq 0 ]
-then
+QUIET=false
+BRANCH=""
+
+# Parse arguments
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --quiet|-q)
+      QUIET=true
+      shift
+      ;;
+    --help|-h)
+      echo "Usage: $0 [--quiet] [branch]"
+      echo ""
+      echo "Watch the CI status of a branch and notify when it's done."
+      echo ""
+      echo "Options:"
+      echo "  --quiet, -q    Suppress audio notifications"
+      echo "  --help, -h     Show this help"
+      echo ""
+      echo "Arguments:"
+      echo "  branch         Branch to monitor (default: current branch)"
+      exit 0
+      ;;
+    -*)
+      echo "Unknown option: $1"
+      echo "Use --help for usage information"
+      exit 1
+      ;;
+    *)
+      if [[ -z "$BRANCH" ]]; then
+        BRANCH="$1"
+      else
+        echo "Error: Multiple branch names provided"
+        exit 1
+      fi
+      shift
+      ;;
+  esac
+done
+
+# If no branch specified, use current branch
+if [[ -z "$BRANCH" ]]; then
   BRANCH=$(git rev-parse --abbrev-ref HEAD)
-else
-  BRANCH="$1"
 fi
 
 PROJECT="$(basename "$(git rev-parse --show-toplevel)")"
@@ -52,7 +90,9 @@ hub pr show -h "$BRANCH" || hub compare "$BRANCH"
 # If we are on MacOS, use `terminal-notifier` to display a notification and `say` to speak say the status
 if [ "$(uname)" = "Darwin" ]; then
   terminal-notifier -title "CI Status for $PROJECT" -message "Branch $SHORT_BRANCH CI Status: $STATUS"
-  say "CI done on branch $SHORT_BRANCH. Status: $STATUS"
+  if [[ "$QUIET" != "true" ]]; then
+    say "CI done on branch $SHORT_BRANCH. Status: $STATUS"
+  fi
   exit $EXIT_CODE
 fi
 
@@ -67,6 +107,8 @@ elif command -v zenity &> /dev/null; then
 # If we are on Windows, use PowerShell to display a notification
 elif [ "$(uname)" = "MINGW64_NT-10.0" ]; then
   powershell -Command "New-BurntToastNotification -Text 'Branch $SHORT_BRANCH CI Status: $STATUS'"
-  powershell -Command "Add-Type -AssemblyName System.Speech; (New-Object System.Speech.Synthesis.SpeechSynthesizer).Speak('CI done on branch $SHORT_BRANCH. Status: $STATUS')"
+  if [[ "$QUIET" != "true" ]]; then
+    powershell -Command "Add-Type -AssemblyName System.Speech; (New-Object System.Speech.Synthesis.SpeechSynthesizer).Speak('CI done on branch $SHORT_BRANCH. Status: $STATUS')"
+  fi
 fi
 exit $EXIT_CODE
