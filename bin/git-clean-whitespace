@@ -44,19 +44,72 @@ if [[ $# -gt 0 ]]; then
   esac
 fi
 
+# Get git repository information
+ORIGINAL_PWD="$(pwd)"
+GIT_ROOT="$(git rev-parse --show-toplevel)"
+
+# Change to git root directory for git commands to work properly
+cd "$GIT_ROOT"
+
+# Convert target file path to be relative to git root
+if [[ -n "${TARGET_FILE:-}" ]]; then
+  # Convert the target file path to be relative to git root
+  if [[ "$TARGET_FILE" = /* ]]; then
+    # Absolute path - convert to relative to git root
+    if command -v realpath >/dev/null 2>&1; then
+      TARGET_FILE_GITREL="$(realpath --relative-to="$GIT_ROOT" "$TARGET_FILE" 2>/dev/null || echo "$TARGET_FILE")"
+    else
+      # Fallback for systems without realpath
+      TARGET_FILE_GITREL="${TARGET_FILE#$GIT_ROOT/}"
+      # If the file doesn't start with git root, it might be outside the repo
+      if [[ "$TARGET_FILE_GITREL" = "$TARGET_FILE" ]]; then
+        echo "Error: File '$TARGET_FILE' appears to be outside the git repository"
+        exit 1
+      fi
+    fi
+  else
+    # Relative path - convert from original PWD to git root relative
+    if command -v realpath >/dev/null 2>&1; then
+      if [[ -f "$ORIGINAL_PWD/$TARGET_FILE" ]] || [[ -f "$TARGET_FILE" ]]; then
+        TARGET_FILE_GITREL="$(realpath --relative-to="$GIT_ROOT" "$ORIGINAL_PWD/$TARGET_FILE" 2>/dev/null || echo "$TARGET_FILE")"
+      else
+        # File might not exist yet, try to construct the path
+        TARGET_FILE_GITREL="$(realpath --relative-to="$GIT_ROOT" "$ORIGINAL_PWD" 2>/dev/null)/$TARGET_FILE"
+      fi
+    else
+      # Fallback for systems without realpath
+      # Get relative path from git root to original PWD
+      ORIGINAL_PWD_REL="${ORIGINAL_PWD#$GIT_ROOT/}"
+      if [[ "$ORIGINAL_PWD_REL" = "$ORIGINAL_PWD" ]]; then
+        # We're not in a subdirectory of git root
+        TARGET_FILE_GITREL="$TARGET_FILE"
+      else
+        TARGET_FILE_GITREL="$ORIGINAL_PWD_REL/$TARGET_FILE"
+      fi
+    fi
+    # Clean up any leading "./" 
+    TARGET_FILE_GITREL="${TARGET_FILE_GITREL#./}"
+  fi
+
+  # Verify the file is actually staged
+  if ! git diff --cached --name-only | grep -qF "$TARGET_FILE_GITREL"; then
+    echo "File '${TARGET_FILE}' (git path: ${TARGET_FILE_GITREL}) is not staged for commit."
+    echo "Staged files are:"
+    git diff --cached --name-only | sed 's/^/  /'
+    exit 1
+  fi
+
+  echo "Processing file: $TARGET_FILE_GITREL"
+fi
+
 # Remove changes from the index if they are only whitespace
 # Based on answer to this question
 # http://stackoverflow.com/questions/1751612/git-tool-to-remove-lines-from-staging-if-they-consist-only-of-changes-in-whitespa
 
-if [[ -n "${TARGET_FILE:-}" ]]; then
+if [[ -n "${TARGET_FILE_GITREL:-}" ]]; then
   # Process only the specified file
-  if ! git diff --cached --name-only | grep -q "^${TARGET_FILE}$"; then
-    echo "File '${TARGET_FILE}' is not staged for commit."
-    exit 1
-  fi
-
-  clean=$(git diff --cached -w -R -- "${TARGET_FILE}")
-  git apply --cached <(git diff --cached -R -- "${TARGET_FILE}")
+  clean=$(git diff --cached -w -R -- "${TARGET_FILE_GITREL}")
+  git apply --cached <(git diff --cached -R -- "${TARGET_FILE_GITREL}")
   echo "$clean" | git apply --cached -R -
 else
   # Process all staged files (original behavior)

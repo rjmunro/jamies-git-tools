@@ -17,8 +17,14 @@ You can process all staged files or target a specific file.
 # Remove whitespace changes from all staged files
 git clean-whitespace
 
-# Remove whitespace changes from a specific file only
+# Remove whitespace changes from a specific file (relative to current directory)
 git clean-whitespace src/main.js
+
+# Remove whitespace changes from a file using absolute path
+git clean-whitespace /full/path/to/project/src/main.js
+
+# Remove whitespace changes from a file in parent directory
+git clean-whitespace ../other-module/file.js
 
 # Show help
 git clean-whitespace --help
@@ -26,20 +32,33 @@ git clean-whitespace --help
 
 ## Options
 
-- `filename`: Optional. Only process the specified file. If not provided, processes all staged files.
+- `filename`: Optional. Only process the specified file. Can be:
+  - Relative to current working directory: `src/main.js`
+  - Absolute system path: `/full/path/to/file.js`
+  - Path relative to parent directories: `../other-file.js`
 - `--help`, `-h`: Show usage information
 
 ## How It Works
 
-The script identifies whitespace-only changes using `git diff --cached -w -R` and then applies those
-changes to remove them from the staging area. This leaves only the meaningful code changes staged
-for commit.
+The script:
+
+1. **Always runs from git repository root** to ensure git commands work properly
+2. **Converts file paths** from your current working directory or absolute paths to paths relative to the git repository root
+3. **Identifies whitespace-only changes** using `git diff --cached -w -R`
+4. **Removes those changes** from the staging area, leaving only meaningful code changes staged
 
 When a filename is specified, the script:
 
-1. Checks if the file is actually staged for commit
-2. Processes only that file instead of all staged files
-3. Exits with an error if the specified file is not staged
+1. Converts the provided file path to be relative to the git repository root
+2. Checks if the file is actually staged for commit
+3. Processes only that file instead of all staged files
+4. Exits with an error if the specified file is not staged
+
+**Path conversion examples:**
+
+- Current directory: `src/main.js` → `packages/frontend/src/main.js` (if running from `packages/frontend/`)
+- Absolute path: `/home/user/project/lib/utils.js` → `lib/utils.js`
+- Parent directory: `../shared/types.ts` → `shared/types.ts` (if running from `packages/frontend/`)
 
 ## Use Case Examples
 
