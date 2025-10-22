@@ -1,13 +1,17 @@
 # git-clean-whitespace
 
 A script to remove whitespace-only changes from the staging area, leaving only non-whitespace
-changes staged for commit.
+changes staged for commit. Can also work in reverse to remove non-whitespace changes and leave
+only whitespace changes.
 
 ## Overview
 
 This script is the complement to `git-clean-nonwhitespace`. It removes whitespace-only changes from
 the staging area while preserving logical code changes. This is useful when you want to commit
 substantive changes without including incidental whitespace modifications.
+
+With the `--reverse` option, it does the opposite: removes non-whitespace changes and leaves only
+whitespace changes staged. This provides the same functionality as `git-clean-nonwhitespace`.
 
 You can process all staged files or target a specific file.
 
@@ -17,8 +21,14 @@ You can process all staged files or target a specific file.
 # Remove whitespace changes from all staged files
 git clean-whitespace
 
+# Remove NON-whitespace changes from all staged files (leave only whitespace)
+git clean-whitespace --reverse
+
 # Remove whitespace changes from a specific file (relative to current directory)
 git clean-whitespace src/main.js
+
+# Remove NON-whitespace changes from a specific file
+git clean-whitespace --reverse src/main.js
 
 # Remove whitespace changes from a file using absolute path
 git clean-whitespace /full/path/to/project/src/main.js
@@ -32,6 +42,7 @@ git clean-whitespace --help
 
 ## Options
 
+- `--reverse`: Remove non-whitespace changes instead of whitespace changes (same as `git-clean-nonwhitespace`)
 - `filename`: Optional. Only process the specified file. Can be:
   - Relative to current working directory: `src/main.js`
   - Absolute system path: `/full/path/to/file.js`

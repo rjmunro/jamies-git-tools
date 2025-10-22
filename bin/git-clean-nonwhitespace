@@ -11,4 +11,9 @@
 
 set -eu
 
-git apply --cached -R <(git diff --cached -w)
+# Find git-clean-whitespace in the same directory as this script
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+CLEAN_WHITESPACE="$SCRIPT_DIR/git-clean-whitespace"
+
+# Call git-clean-whitespace with --reverse option
+exec "$CLEAN_WHITESPACE" --reverse "$@"
