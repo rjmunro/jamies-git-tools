@@ -100,134 +100,64 @@ open_pr_page() {
   hub pr show -h "$branch" || hub compare "$branch"
 }
 
-# Initialize tracking arrays (compatible with bash 3.2+)
+# Initialize tracking
 PENDING_BRANCHES=()      # Array of branches still being monitored
 COMPLETED_BRANCHES=()    # Array of completed branches
-BRANCH_TRIES=()          # Track tries per branch (parallel array)
-BRANCH_STATUS=()         # Track current status per branch (parallel array)
 OVERALL_EXIT_CODE=0
 
 # Initialize all branches
 for branch in "${BRANCHES[@]}"; do
   PENDING_BRANCHES+=("$branch")
-  BRANCH_TRIES+=(0)
-  BRANCH_STATUS+=("")
   echo "Starting to monitor: $branch"
 done
 
-# We need to track final status differently since we use parallel arrays
-# Let's create a simple status tracking approach
-COMPLETED_STATUS=()    # Track final status for completed branches
-
-# Initialize completed status array
-for branch in "${BRANCHES[@]}"; do
-  COMPLETED_STATUS+=("")
-done
-
 # Constants
-MAX_INITIAL_TRIES=5
-CURRENT_BRANCH_INDEX=0
+MAX_INITIAL_TRIES=5      # How many 15-second cycles to wait for "no status" branches
+GLOBAL_TRIES=0           # Global counter for initial "no status" period
 
 # Main monitoring loop
 while [[ ${#PENDING_BRANCHES[@]} -gt 0 ]]; do
-  # Get the current branch to check (round-robin)
-  if [[ $CURRENT_BRANCH_INDEX -ge ${#PENDING_BRANCHES[@]} ]]; then
-    CURRENT_BRANCH_INDEX=0
-  fi
+  NEW_PENDING=()
 
-  branch="${PENDING_BRANCHES[$CURRENT_BRANCH_INDEX]}"
+  # Check each pending branch
+  for branch in "${PENDING_BRANCHES[@]}"; do
+    EXIT_CODE=0
+    STATUS=$(hub ci-status "$branch" 2>/dev/null || EXIT_CODE=$?)
 
-  EXIT_CODE=0
-  STATUS=$(hub ci-status "$branch" 2>/dev/null || EXIT_CODE=$?)
-  BRANCH_STATUS[$CURRENT_BRANCH_INDEX]="$STATUS"
-
-  # Determine if this branch should continue being monitored
-  TRIES=${BRANCH_TRIES[$CURRENT_BRANCH_INDEX]}
-
-  if [ "$STATUS" = "pending" ] || { [ "$TRIES" -lt "$MAX_INITIAL_TRIES" ] && [ "$STATUS" = "no status" ]; }; then
-    # Still pending, keep monitoring
-    echo "$STATUS ($branch)"
-    BRANCH_TRIES[$CURRENT_BRANCH_INDEX]=$((TRIES + 1))
-
-    # Move to next branch and sleep 15 seconds
-    CURRENT_BRANCH_INDEX=$((CURRENT_BRANCH_INDEX + 1))
-    if [[ ${#PENDING_BRANCHES[@]} -gt 0 ]]; then
+    # Determine if this branch should continue being monitored
+    if [ "$STATUS" = "pending" ] || { [ "$GLOBAL_TRIES" -lt "$MAX_INITIAL_TRIES" ] && [ "$STATUS" = "no status" ]; }; then
+      # Still pending, keep monitoring
+      echo "$STATUS ($branch)"
+      NEW_PENDING+=("$branch")
+      GLOBAL_TRIES=$((GLOBAL_TRIES + 1))
       sleep 15
-    fi
-  else
-    # Branch completed (success, failure, or error)
-    echo "$STATUS ($branch) - COMPLETED"
+    else
+      # Branch completed (success, failure, or error)
+      echo "$STATUS ($branch) - COMPLETED"
+      COMPLETED_BRANCHES+=("$branch")
 
-    # Remove this branch from pending arrays (remove at current index)
-    NEW_PENDING=()
-    NEW_TRIES=()
-    NEW_STATUS=()
-    for i in "${!PENDING_BRANCHES[@]}"; do
-      if [[ $i -ne $CURRENT_BRANCH_INDEX ]]; then
-        NEW_PENDING+=("${PENDING_BRANCHES[$i]}")
-        NEW_TRIES+=("${BRANCH_TRIES[$i]}")
-        NEW_STATUS+=("${BRANCH_STATUS[$i]}")
+      # Send notification
+      send_notification "$branch" "$STATUS"
+
+      # Open PR page for this branch
+      open_pr_page "$branch"
+
+      # Track exit code (non-zero if any branch failed)
+      if [[ $EXIT_CODE -ne 0 ]]; then
+        OVERALL_EXIT_CODE=$EXIT_CODE
       fi
-    done
-
-    # Update arrays
-    PENDING_BRANCHES=("${NEW_PENDING[@]}")
-    BRANCH_TRIES=("${NEW_TRIES[@]}")
-    BRANCH_STATUS=("${NEW_STATUS[@]}")
-
-    # Adjust current index if we removed a branch before it
-    if [[ $CURRENT_BRANCH_INDEX -gt 0 ]] && [[ $CURRENT_BRANCH_INDEX -ge ${#PENDING_BRANCHES[@]} ]]; then
-      CURRENT_BRANCH_INDEX=0
-    fi
-
-    COMPLETED_BRANCHES+=("$branch")
-
-    # Store the final status for this branch
-    # Find the original index in the BRANCHES array
-    for i in "${!BRANCHES[@]}"; do
-      if [[ "${BRANCHES[$i]}" == "$branch" ]]; then
-        COMPLETED_STATUS[$i]="$STATUS"
-        break
-      fi
-    done
-
-    # Send notification
-    send_notification "$branch" "$STATUS"
-
-    # Open PR page for this branch
-    open_pr_page "$branch" &
-
-    # Track exit code (non-zero if any branch failed)
-    if [[ $EXIT_CODE -ne 0 ]]; then
-      OVERALL_EXIT_CODE=$EXIT_CODE
-    fi
-
-    # Show summary if we have both completed and pending branches
-    if [[ ${#COMPLETED_BRANCHES[@]} -gt 0 && ${#PENDING_BRANCHES[@]} -gt 0 ]]; then
-      echo "--- Completed: ${#COMPLETED_BRANCHES[@]}, Still monitoring: ${#PENDING_BRANCHES[@]} ---"
-    fi
-
-    # Don't sleep - immediately check next branch after a completion
-    echo "Branch completed, checking next branch immediately..."
-  fi
-done
-
-echo ""
-echo "All branches completed!"
-echo "Completed branches: ${COMPLETED_BRANCHES[*]}"
-
-# Final summary
-echo ""
-for i in "${!COMPLETED_BRANCHES[@]}"; do
-  branch="${COMPLETED_BRANCHES[$i]}"
-  # Find the status for this branch
-  for j in "${!BRANCHES[@]}"; do
-    if [[ "${BRANCHES[$j]}" == "$branch" ]]; then
-      status="${COMPLETED_STATUS[$j]}"
-      echo "Final status: $status ($branch)"
-      break
     fi
   done
+
+  # Update pending branches array
+  PENDING_BRANCHES=("${NEW_PENDING[@]}")
 done
+
+# If the number of completed branches is more than one, give a final summary
+if [[ ${#COMPLETED_BRANCHES[@]} -gt 1 ]]; then
+  echo ""
+  echo "All branches completed!"
+  echo "Completed branches: ${COMPLETED_BRANCHES[*]}"
+fi
 
 exit $OVERALL_EXIT_CODE
