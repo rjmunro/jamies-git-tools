@@ -4,14 +4,14 @@ import path from "path";
 export default defineConfig({
   title: "Jamie's Git Tools",
   description: "A collection of powerful Git utilities and scripts",
-  base: "/git-tools/",
+  base: "/jamies-git-tools/",
   cleanUrls: true,
 
   themeConfig: {
     nav: [
       { text: "Home", link: "/" },
       { text: "Tools", link: "/tools" },
-      { text: "GitHub", link: "https://github.com/yourusername/git-tools" },
+      { text: "GitHub", link: "https://github.com/rjmunro/jamies-git-tools" },
     ],
 
     sidebar: [
