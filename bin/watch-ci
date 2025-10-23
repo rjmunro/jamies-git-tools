@@ -61,6 +61,12 @@ if [[ ${#BRANCHES[@]} -eq 0 ]]; then
   BRANCHES=($(git rev-parse --abbrev-ref HEAD))
 fi
 
+# Check if hub is available
+if ! command -v hub >/dev/null 2>&1; then
+  echo "Error: 'hub' command not found. Please install hub: https://github.com/github/hub"
+  exit 1
+fi
+
 PROJECT="$(basename "$(git rev-parse --show-toplevel)")"
 
 # Function to send notification for a completed branch
