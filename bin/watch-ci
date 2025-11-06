@@ -156,7 +156,7 @@ while [[ ${#PENDING_BRANCHES[@]} -gt 0 ]]; do
   done
 
   # Update pending branches array
-  PENDING_BRANCHES=("${NEW_PENDING[@]}")
+  PENDING_BRANCHES=("${NEW_PENDING[@]+"${NEW_PENDING[@]}"}")
 done
 
 # If the number of completed branches is more than one, give a final summary
