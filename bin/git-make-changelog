@@ -192,10 +192,12 @@ def print_help():
     print("\nOptions:")
     print("  --help, -h              Show this help message")
     print("  --no-group              Don't group commits by conventional commit type")
+    print("  --unreleased-version V  Use version V instead of 'Unreleased' for upcoming release")
     print("\nExamples:")
-    print("  git make-changelog                    # Generate full changelog with grouping")
-    print("  git make-changelog --no-group         # Generate without grouping by type")
-    print("  git make-changelog > CHANGELOG.md     # Save to file")
+    print("  git make-changelog                                # Generate full changelog")
+    print("  git make-changelog --no-group                     # Generate without grouping")
+    print("  git make-changelog --unreleased-version v1.3.0    # Label unreleased as v1.3.0")
+    print("  git make-changelog > CHANGELOG.md                 # Save to file")
 
 def format_commits_grouped(commits, github_url):
     """Format commits grouped by conventional commit type."""
@@ -266,11 +268,19 @@ def main():
 
     # Parse arguments
     group_by_type = True
+    unreleased_version = None
     if '--help' in sys.argv or '-h' in sys.argv:
         print_help()
         sys.exit(0)
     if '--no-group' in sys.argv:
         group_by_type = False
+    if '--unreleased-version' in sys.argv:
+        idx = sys.argv.index('--unreleased-version')
+        if idx + 1 < len(sys.argv):
+            unreleased_version = sys.argv[idx + 1]
+        else:
+            print("Error: --unreleased-version requires a version argument", file=sys.stderr)
+            sys.exit(1)
 
     github_url = get_github_url()
     commit_tags = parse_tags_from_log()
@@ -292,7 +302,18 @@ def main():
         first_tag_commit = tag_sequence[0][1]
         unreleased_commits = get_commits_between(first_tag_commit, 'HEAD')
         if unreleased_commits:
-            print("## Unreleased\n")
+            # Use custom version header if provided
+            if unreleased_version:
+                tag_date = get_tag_date('HEAD')
+                header = f"## [{unreleased_version}]"
+                if tag_date:
+                    header += f" - {tag_date}"
+                if github_url and tag_sequence:
+                    prev_tag = tag_sequence[0][0]
+                    header += f"\n[{unreleased_version}]: {github_url}/compare/{prev_tag}...HEAD"
+                print(header + "\n")
+            else:
+                print("## Unreleased\n")
             if group_by_type:
                 output = format_commits_grouped(unreleased_commits, github_url)
             else:
@@ -301,7 +322,16 @@ def main():
                 print(output)
     elif commit_tags:
         # No tags found, show all commits as unreleased
-        print("## Unreleased\n")
+        if unreleased_version:
+            tag_date = get_tag_date('HEAD')
+            header = f"## [{unreleased_version}]"
+            if tag_date:
+                header += f" - {tag_date}"
+            if github_url:
+                header += f"\n[{unreleased_version}]: {github_url}/releases/tag/{unreleased_version}"
+            print(header + "\n")
+        else:
+            print("## Unreleased\n")
         all_commits = get_commits_between('', 'HEAD')
         if group_by_type:
             output = format_commits_grouped(all_commits, github_url)

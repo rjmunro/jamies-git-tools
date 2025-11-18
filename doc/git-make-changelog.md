@@ -7,7 +7,7 @@ Generate a well-formatted changelog from git history, organizing commits by vers
 This script analyzes your git repository's commit history and generates a markdown-formatted changelog. It automatically:
 
 - Groups commits by version tags (newest to oldest)
-- Shows unreleased changes since the last tag
+- Shows unreleased changes since the last tag (or labels them with upcoming version)
 - Formats pull request merges with clickable links (when on GitHub)
 - Includes tag dates
 - Generates comparison links between versions
@@ -47,6 +47,7 @@ git make-changelog > CHANGELOG.md
 ```bash
 git make-changelog --help                        # Show help
 git make-changelog --no-group                    # Don't group by commit type
+git make-changelog --unreleased-version v1.3.0   # Label unreleased as v1.3.0
 ```
 
 ## Output Format
@@ -160,15 +161,14 @@ git pull
 # Preview unreleased changes
 git make-changelog | head -20
 
-# Create a new release tag
-git tag v1.3.0
-git push origin v1.3.0
-
-# Update changelog
-git make-changelog > CHANGELOG.md
+# Generate changelog with version header (before tagging)
+git make-changelog --unreleased-version v1.3.0 > CHANGELOG.md
 git add CHANGELOG.md
 git commit -m "docs: update changelog for v1.3.0"
-git push
+
+# Now create the release tag (includes the changelog commit)
+git tag v1.3.0
+git push origin v1.3.0 --follow-tags
 ```
 
 ## Part of Jamie's Git Tools
