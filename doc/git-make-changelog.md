@@ -12,6 +12,7 @@ This script analyzes your git repository's commit history and generates a markdo
 - Includes tag dates
 - Generates comparison links between versions
 - Filters out release commits (`chore(release):`)
+- Supports conventional commits with category grouping
 
 The output follows a clean changelog format that's perfect for `CHANGELOG.md` files in your projects.
 
@@ -41,10 +42,11 @@ Save the generated changelog to a file:
 git make-changelog > CHANGELOG.md
 ```
 
-### Show Help
+### Options
 
 ```bash
-git make-changelog --help
+git make-changelog --help                        # Show help
+git make-changelog --no-group                    # Don't group by commit type
 ```
 
 ## Output Format
