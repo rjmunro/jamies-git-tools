@@ -103,6 +103,34 @@ def get_commits_between(old, new):
             commits.append({'hash': commit_hash, 'message': message})
     return commits
 
+def parse_conventional_commit(message):
+    """Parse a conventional commit message and return (type, scope, description, breaking)."""
+    lines = [l.strip() for l in message.strip().splitlines() if l.strip()]
+    if not lines:
+        return None, None, None, False
+
+    first_line = lines[0]
+
+    # Match conventional commit format: type(scope): description or type: description
+    # Also check for breaking change indicator (!)
+    match = re.match(r'^(\w+)(?:\(([^)]+)\))?(!?):\s*(.+)$', first_line)
+    if match:
+        commit_type = match.group(1).lower()
+        scope = match.group(2)
+        breaking = match.group(3) == '!'
+        description = match.group(4)
+
+        # Check for BREAKING CHANGE in body
+        if not breaking:
+            for line in lines[1:]:
+                if line.startswith('BREAKING CHANGE:') or line.startswith('BREAKING-CHANGE:'):
+                    breaking = True
+                    break
+
+        return commit_type, scope, description, breaking
+
+    return None, None, first_line, False
+
 def format_commit(message, github_url=None):
     """Return dict with commit info for changelog entry."""
     lines = [l.strip() for l in message.strip().splitlines() if l.strip()]
@@ -124,11 +152,24 @@ def format_commit(message, github_url=None):
                 break
 
     # Use PR title if found, otherwise first line
-    entry = title if title else lines[0]
+    commit_text = title if title else lines[0]
 
     # Check for release commits (usually not interesting in changelog)
-    if re.match(r'^chore\(release\):', entry, re.IGNORECASE):
+    if re.match(r'^chore\(release\):', commit_text, re.IGNORECASE):
         return None
+
+    # Parse conventional commit format
+    commit_type, scope, description, breaking = parse_conventional_commit(commit_text)
+
+    # If not a conventional commit, use the whole first line
+    if not commit_type:
+        commit_type = 'other'
+        description = commit_text
+
+    # Format the entry
+    entry = description
+    if scope:
+        entry = f"**{scope}**: {description}"
 
     # Add PR link if available
     if pr_num and github_url:
@@ -136,7 +177,11 @@ def format_commit(message, github_url=None):
     elif pr_num:
         entry += f" (#{pr_num})"
 
-    return entry
+    return {
+        'type': commit_type,
+        'text': entry,
+        'breaking': breaking
+    }
 
 # ----------------------------
 # Main Script
@@ -146,26 +191,86 @@ def print_help():
     print(__doc__)
     print("\nOptions:")
     print("  --help, -h              Show this help message")
+    print("  --no-group              Don't group commits by conventional commit type")
     print("\nExamples:")
-    print("  git make-changelog                    # Generate full changelog")
+    print("  git make-changelog                    # Generate full changelog with grouping")
+    print("  git make-changelog --no-group         # Generate without grouping by type")
     print("  git make-changelog > CHANGELOG.md     # Save to file")
 
-def format_commits(commits, github_url):
-    """Format commits as a simple list."""
+def format_commits_grouped(commits, github_url):
+    """Format commits grouped by conventional commit type."""
+    # Category mapping
+    categories = {
+        'feat': ('✨ Features', []),
+        'fix': ('🐛 Bug Fixes', []),
+        'docs': ('📚 Documentation', []),
+        'style': ('💎 Styles', []),
+        'refactor': ('♻️ Code Refactoring', []),
+        'perf': ('⚡ Performance Improvements', []),
+        'test': ('✅ Tests', []),
+        'build': ('📦 Build System', []),
+        'ci': ('👷 Continuous Integration', []),
+        'chore': ('🔧 Chores', []),
+        'revert': ('⏪ Reverts', []),
+        'other': ('Other Changes', [])
+    }
+
+    breaking_changes = []
+
+    # Categorize commits
+    for c in commits:
+        result = format_commit(c['message'], github_url)
+        if result:
+            commit_type = result['type']
+            if result['breaking']:
+                breaking_changes.append(result['text'])
+
+            # Add to appropriate category
+            if commit_type in categories:
+                categories[commit_type][1].append(result['text'])
+            else:
+                categories['other'][1].append(result['text'])
+
+    # Generate output
+    output = []
+
+    # Breaking changes first (if any)
+    if breaking_changes:
+        output.append("### ⚠️ BREAKING CHANGES\n")
+        for entry in breaking_changes:
+            output.append(f"* {entry}")
+        output.append("")
+
+    # Then each category that has commits
+    for cat_type, (cat_name, entries) in categories.items():
+        if entries:
+            output.append(f"### {cat_name}\n")
+            for entry in entries:
+                output.append(f"* {entry}")
+            output.append("")
+
+    return '\n'.join(output) if output else None
+
+def format_commits_flat(commits, github_url):
+    """Format commits without grouping."""
     output = []
     for c in commits:
-        entry = format_commit(c['message'], github_url)
-        if entry:
-            output.append(f"* {entry}")
+        result = format_commit(c['message'], github_url)
+        if result:
+            prefix = "* ⚠️ **BREAKING**: " if result['breaking'] else "* "
+            output.append(f"{prefix}{result['text']}")
     return '\n'.join(output) if output else None
 
 def main():
     import sys
 
     # Parse arguments
+    group_by_type = True
     if '--help' in sys.argv or '-h' in sys.argv:
         print_help()
         sys.exit(0)
+    if '--no-group' in sys.argv:
+        group_by_type = False
 
     github_url = get_github_url()
     commit_tags = parse_tags_from_log()
@@ -188,14 +293,20 @@ def main():
         unreleased_commits = get_commits_between(first_tag_commit, 'HEAD')
         if unreleased_commits:
             print("## Unreleased\n")
-            output = format_commits(unreleased_commits, github_url)
+            if group_by_type:
+                output = format_commits_grouped(unreleased_commits, github_url)
+            else:
+                output = format_commits_flat(unreleased_commits, github_url)
             if output:
                 print(output)
     elif commit_tags:
         # No tags found, show all commits as unreleased
         print("## Unreleased\n")
         all_commits = get_commits_between('', 'HEAD')
-        output = format_commits(all_commits, github_url)
+        if group_by_type:
+            output = format_commits_grouped(all_commits, github_url)
+        else:
+            output = format_commits_flat(all_commits, github_url)
         if output:
             print(output)
 
@@ -219,7 +330,11 @@ def main():
         print(header)
 
         commits = get_commits_between(next_commit, commit if commit else 'HEAD')
-        output = format_commits(commits, github_url)
+        if group_by_type:
+            output = format_commits_grouped(commits, github_url)
+        else:
+            output = format_commits_flat(commits, github_url)
+
         if output:
             print(output)
 
