@@ -161,14 +161,17 @@ git pull
 # Preview unreleased changes
 git make-changelog | head -20
 
+# Set the version for the new release
+NEW_VERSION=v1.3.0
+
 # Generate changelog with version header (before tagging)
-git make-changelog --unreleased-version v1.3.0 > CHANGELOG.md
+git make-changelog --unreleased-version $NEW_VERSION > CHANGELOG.md
 git add CHANGELOG.md
-git commit -m "docs: update changelog for v1.3.0"
+git commit -m "docs: update changelog for $NEW_VERSION"
 
 # Now create the release tag (includes the changelog commit)
-git tag v1.3.0
-git push origin v1.3.0 --follow-tags
+git tag $NEW_VERSION
+git push origin $NEW_VERSION --follow-tags
 ```
 
 ## Part of Jamie's Git Tools
