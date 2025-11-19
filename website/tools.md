@@ -66,6 +66,12 @@ Removes whitespace-only changes from staging to focus commits on logical changes
 
 Tools for daily development tasks and project management:
 
+### git-make-changelog
+
+Generates a well-formatted changelog from git history with support for conventional commits, organizing by version tags.
+
+[View Documentation →](tools/git-make-changelog)
+
 ### watch-ci
 
 Monitors CI status of a branch and provides desktop/audio notifications when builds complete.

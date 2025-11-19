@@ -1,0 +1,372 @@
+#!/usr/bin/env python3
+"""
+git-make-changelog
+Copyright (c) 2025 Robert (Jamie) Munro
+Licensed under the MIT License
+
+Generate a changelog from git history, organizing commits by version tags.
+Formats merge commits (especially pull requests) in a readable way.
+
+Part of Jamie's Git Tools: https://github.com/rjmunro/jamies-git-tools
+
+Usage:
+  git make-changelog
+
+Output:
+  Markdown-formatted changelog with sections for each version tag and unreleased changes.
+"""
+
+import subprocess
+import re
+import sys
+from collections import OrderedDict
+
+# ----------------------------
+# Helper Functions
+# ----------------------------
+def run_git(*args):
+    """Run git command and return output as string."""
+    try:
+        return subprocess.check_output(['git'] + list(args), text=True, stderr=subprocess.PIPE).strip()
+    except subprocess.CalledProcessError as e:
+        print(f"Error running git command: {e}", file=sys.stderr)
+        print(f"Command: git {' '.join(args)}", file=sys.stderr)
+        if e.stderr:
+            print(f"Stderr: {e.stderr}", file=sys.stderr)
+        raise
+
+def get_github_url():
+    """Derive GitHub repo URL from git remote."""
+    try:
+        url = run_git('remote', 'get-url', 'origin')
+        # Convert SSH or git URLs to https://github.com/user/repo
+        if url.startswith('git@github.com:'):
+            url = url[15:]
+            url = url.rstrip('.git')
+            return f"https://github.com/{url}"
+        if url.startswith('https://github.com/'):
+            url = url.rstrip('.git')
+            return url
+        if url.startswith('ssh://git@github.com/'):
+            url = url[21:]
+            url = url.rstrip('.git')
+            return f"https://github.com/{url}"
+        return None
+    except subprocess.CalledProcessError:
+        return None
+
+def parse_tags_from_log():
+    """Return OrderedDict of {commit_hash: [tags]} from git log --decorate."""
+    log = run_git('log', '--first-parent', '--decorate=short', '--pretty=format:%H %d')
+    commit_tags = OrderedDict()
+    # Match tags without the refs/tags/ prefix when using --decorate=short
+    tag_pattern = re.compile(r'tag:\s*([^,)]+)')
+    for line in log.splitlines():
+        if not line.strip():
+            continue
+        parts = line.split(' ', 1)
+        commit = parts[0]
+        # Extract tags and clean up whitespace
+        tags = [t.strip() for t in tag_pattern.findall(parts[1])] if len(parts) > 1 else []
+        commit_tags[commit] = tags
+    return commit_tags
+
+def get_tag_date(tag):
+    """Get the date of a tag. Try annotated tag date first, then commit date."""
+    try:
+        # Try to get annotated tag date using %(creatordate:short)
+        result = run_git('for-each-ref', '--format=%(creatordate:short)', f'refs/tags/{tag}')
+        if result:
+            return result
+    except subprocess.CalledProcessError:
+        pass
+
+    try:
+        # Fall back to commit date using %as (short date format)
+        return run_git('log', '-1', '--format=%as', tag)
+    except subprocess.CalledProcessError:
+        return ''
+
+def get_commits_between(old, new):
+    """Return list of commit dicts between old..new on first-parent."""
+    log_format = '%H%n%B%n---COMMIT-END---'
+    output = run_git('log', '--first-parent', f'--pretty=format:{log_format}', f'{old}..{new}' if old else new)
+    commits = []
+    for raw_commit in output.split('---COMMIT-END---'):
+        lines = raw_commit.strip().splitlines()
+        if not lines:
+            continue
+        commit_hash = lines[0]
+        message = '\n'.join(lines[1:]).strip()
+        # Skip if message is empty or just the delimiter
+        if message and message != '---COMMIT-END---':
+            commits.append({'hash': commit_hash, 'message': message})
+    return commits
+
+def parse_conventional_commit(message):
+    """Parse a conventional commit message and return (type, scope, description, breaking)."""
+    lines = [l.strip() for l in message.strip().splitlines() if l.strip()]
+    if not lines:
+        return None, None, None, False
+
+    first_line = lines[0]
+
+    # Match conventional commit format: type(scope): description or type: description
+    # Also check for breaking change indicator (!)
+    match = re.match(r'^(\w+)(?:\(([^)]+)\))?(!?):\s*(.+)$', first_line)
+    if match:
+        commit_type = match.group(1).lower()
+        scope = match.group(2)
+        breaking = match.group(3) == '!'
+        description = match.group(4)
+
+        # Check for BREAKING CHANGE in body
+        if not breaking:
+            for line in lines[1:]:
+                if line.startswith('BREAKING CHANGE:') or line.startswith('BREAKING-CHANGE:'):
+                    breaking = True
+                    break
+
+        return commit_type, scope, description, breaking
+
+    return None, None, first_line, False
+
+def format_commit(message, github_url=None):
+    """Return dict with commit info for changelog entry."""
+    lines = [l.strip() for l in message.strip().splitlines() if l.strip()]
+    if not lines:
+        return None
+
+    # Match various PR merge patterns
+    pr_match = re.match(r'Merge pull request #(\d+)', lines[0])
+    pr_num = None
+    title = None
+
+    if pr_match:
+        pr_num = pr_match.group(1)
+        # Try to find the PR title in subsequent lines
+        for line in lines[1:]:
+            # Skip empty lines and common patterns
+            if line and not line.startswith('Merge') and not line.startswith('#'):
+                title = line
+                break
+
+    # Use PR title if found, otherwise first line
+    commit_text = title if title else lines[0]
+
+    # Check for release commits (usually not interesting in changelog)
+    if re.match(r'^chore\(release\):', commit_text, re.IGNORECASE):
+        return None
+
+    # Parse conventional commit format
+    commit_type, scope, description, breaking = parse_conventional_commit(commit_text)
+
+    # If not a conventional commit, use the whole first line
+    if not commit_type:
+        commit_type = 'other'
+        description = commit_text
+
+    # Format the entry
+    entry = description
+    if scope:
+        entry = f"**{scope}**: {description}"
+
+    # Add PR link if available
+    if pr_num and github_url:
+        entry += f" ([#{pr_num}]({github_url}/pull/{pr_num}))"
+    elif pr_num:
+        entry += f" (#{pr_num})"
+
+    return {
+        'type': commit_type,
+        'text': entry,
+        'breaking': breaking
+    }
+
+# ----------------------------
+# Main Script
+# ----------------------------
+def print_help():
+    """Print help message."""
+    print(__doc__)
+    print("\nOptions:")
+    print("  --help, -h              Show this help message")
+    print("  --no-group              Don't group commits by conventional commit type")
+    print("  --unreleased-version V  Use version V instead of 'Unreleased' for upcoming release")
+    print("\nExamples:")
+    print("  git make-changelog                                # Generate full changelog")
+    print("  git make-changelog --no-group                     # Generate without grouping")
+    print("  git make-changelog --unreleased-version v1.3.0    # Label unreleased as v1.3.0")
+    print("  git make-changelog > CHANGELOG.md                 # Save to file")
+
+def format_commits_grouped(commits, github_url):
+    """Format commits grouped by conventional commit type."""
+    # Category mapping
+    categories = {
+        'feat': ('✨ Features', []),
+        'fix': ('🐛 Bug Fixes', []),
+        'docs': ('📚 Documentation', []),
+        'style': ('💎 Styles', []),
+        'refactor': ('♻️ Code Refactoring', []),
+        'perf': ('⚡ Performance Improvements', []),
+        'test': ('✅ Tests', []),
+        'build': ('📦 Build System', []),
+        'ci': ('👷 Continuous Integration', []),
+        'chore': ('🔧 Chores', []),
+        'revert': ('⏪ Reverts', []),
+        'other': ('Other Changes', [])
+    }
+
+    breaking_changes = []
+
+    # Categorize commits
+    for c in commits:
+        result = format_commit(c['message'], github_url)
+        if result:
+            commit_type = result['type']
+            if result['breaking']:
+                breaking_changes.append(result['text'])
+
+            # Add to appropriate category
+            if commit_type in categories:
+                categories[commit_type][1].append(result['text'])
+            else:
+                categories['other'][1].append(result['text'])
+
+    # Generate output
+    output = []
+
+    # Breaking changes first (if any)
+    if breaking_changes:
+        output.append("### ⚠️ BREAKING CHANGES\n")
+        for entry in breaking_changes:
+            output.append(f"* {entry}")
+        output.append("")
+
+    # Then each category that has commits
+    for cat_type, (cat_name, entries) in categories.items():
+        if entries:
+            output.append(f"### {cat_name}\n")
+            for entry in entries:
+                output.append(f"* {entry}")
+            output.append("")
+
+    return '\n'.join(output) if output else None
+
+def format_commits_flat(commits, github_url):
+    """Format commits without grouping."""
+    output = []
+    for c in commits:
+        result = format_commit(c['message'], github_url)
+        if result:
+            prefix = "* ⚠️ **BREAKING**: " if result['breaking'] else "* "
+            output.append(f"{prefix}{result['text']}")
+    return '\n'.join(output) if output else None
+
+def main():
+    import sys
+
+    # Parse arguments
+    group_by_type = True
+    unreleased_version = None
+    if '--help' in sys.argv or '-h' in sys.argv:
+        print_help()
+        sys.exit(0)
+    if '--no-group' in sys.argv:
+        group_by_type = False
+    if '--unreleased-version' in sys.argv:
+        idx = sys.argv.index('--unreleased-version')
+        if idx + 1 < len(sys.argv):
+            unreleased_version = sys.argv[idx + 1]
+        else:
+            print("Error: --unreleased-version requires a version argument", file=sys.stderr)
+            sys.exit(1)
+
+    github_url = get_github_url()
+    commit_tags = parse_tags_from_log()
+
+    # Flatten commit_tags to list of (commit, tags) in newest → oldest order
+    commits_with_tags = [(c, t) for c, t in commit_tags.items() if t]
+
+    # Prepare tag sequence - keep original tag names
+    seen_tags = set()
+    tag_sequence = []
+    for commit, tags in commits_with_tags:
+        for tag in tags:
+            if tag not in seen_tags:
+                seen_tags.add(tag)
+                tag_sequence.append((tag, commit))
+
+    # Add Unreleased section if there are any commits since last tag
+    if tag_sequence:
+        first_tag_commit = tag_sequence[0][1]
+        unreleased_commits = get_commits_between(first_tag_commit, 'HEAD')
+        if unreleased_commits:
+            # Use custom version header if provided
+            if unreleased_version:
+                tag_date = get_tag_date('HEAD')
+                header = f"## [{unreleased_version}]"
+                if tag_date:
+                    header += f" - {tag_date}"
+                if github_url and tag_sequence:
+                    prev_tag = tag_sequence[0][0]
+                    header += f"\n[{unreleased_version}]: {github_url}/compare/{prev_tag}...HEAD"
+                print(header + "\n")
+            else:
+                print("## Unreleased\n")
+            if group_by_type:
+                output = format_commits_grouped(unreleased_commits, github_url)
+            else:
+                output = format_commits_flat(unreleased_commits, github_url)
+            if output:
+                print(output)
+    elif commit_tags:
+        # No tags found, show all commits as unreleased
+        if unreleased_version:
+            tag_date = get_tag_date('HEAD')
+            header = f"## [{unreleased_version}]"
+            if tag_date:
+                header += f" - {tag_date}"
+            if github_url:
+                header += f"\n[{unreleased_version}]: {github_url}/releases/tag/{unreleased_version}"
+            print(header + "\n")
+        else:
+            print("## Unreleased\n")
+        all_commits = get_commits_between('', 'HEAD')
+        if group_by_type:
+            output = format_commits_grouped(all_commits, github_url)
+        else:
+            output = format_commits_flat(all_commits, github_url)
+        if output:
+            print(output)
+
+    # Generate changelog for tags newest → oldest
+    for i, (tag, commit) in enumerate(tag_sequence):
+        next_commit = tag_sequence[i + 1][1] if i + 1 < len(tag_sequence) else ''
+        tag_date = get_tag_date(tag)
+
+        # Format header with tag name and date
+        header = f"## [{tag}]"
+        if tag_date:
+            header += f" - {tag_date}"
+
+        # Add compare link if GitHub URL is available
+        if github_url and i + 1 < len(tag_sequence):
+            next_tag = tag_sequence[i + 1][0]
+            header += f"\n[{tag}]: {github_url}/compare/{next_tag}...{tag}"
+        elif github_url:
+            header += f"\n[{tag}]: {github_url}/releases/tag/{tag}"
+
+        print(header)
+
+        commits = get_commits_between(next_commit, commit if commit else 'HEAD')
+        if group_by_type:
+            output = format_commits_grouped(commits, github_url)
+        else:
+            output = format_commits_flat(commits, github_url)
+
+        if output:
+            print(output)
+
+if __name__ == '__main__':
+    main()
