@@ -10,7 +10,10 @@ transformations. It works by:
 
 1. Retrieving the old version of the file from Git (HEAD)
 2. Applying a sed command to transform the old content
-3. Running `git diff --no-index` between the transformed old content and the current working file
+3. Running `git diff --no-index` between the transformed old content and the current file
+
+The "current file" can be either the working directory version or the staged version (with
+`--cached`/`--staged`), matching the same distinction as regular `git diff`.
 
 This allows you to effectively "hide" systematic changes like variable renames, formatting changes,
 or other pattern-based modifications to focus on the meaningful differences.
@@ -27,6 +30,10 @@ git diff-sed <sed_command> <file_path> [<git_diff_options>...]
 - `<file_path>`: Path to the file you want to diff
 - `<git_diff_options>...`: Additional options to pass to `git diff` (optional)
 
+## Options
+
+- `--cached`, `--staged`: Compare against the staged version instead of the working directory
+
 ## Examples
 
 ```bash
@@ -38,6 +45,9 @@ git diff-sed 's/old-text/new-text/g; s/OldClass/NewClass/g' lib/module.py
 
 # Use with word-diff to see changes more clearly
 git diff-sed 's/legacy_function/new_function/g' utils.py --word-diff
+
+# Compare against staged changes (like git diff --cached)
+git diff-sed 's/oldVar/newVar/g' src/main.js --cached
 
 # Hide whitespace normalization changes
 git diff-sed 's/\t/    /g' config.json --word-diff=color
@@ -108,7 +118,7 @@ git diff-sed 's/oldLib/newLib/g' imports.py \
 
 1. **Retrieve old content**: Uses `git show HEAD:<file>` to get the file content from the last commit
 2. **Transform**: Applies the provided sed command to the old content
-3. **Compare**: Uses `git diff --no-index` to compare the transformed old content with the current working file
+3. **Compare**: Uses `git diff --no-index` to compare the transformed old content with either the working directory version or, with `--cached`/`--staged`, the staged version
 4. **Display**: Shows the diff with any additional git diff options you specify
 
 ## Requirements
@@ -121,7 +131,7 @@ git diff-sed 's/oldLib/newLib/g' imports.py \
 
 - **File must exist in HEAD**: The file must be present in the last commit for the script to work
 - **Sed syntax**: Uses extended regex (`-E` flag), so patterns follow sed extended regex rules
-- **Working directory**: Compares against the current working directory version, not staged changes
+- **Staged support**: Use `--cached` or `--staged` to compare against staged changes instead of the working directory
 - **No modification**: The script doesn't modify any files; it only shows a transformed diff view
 - **Git diff options**: All standard `git diff` options can be used (colors, word-diff, ignore-whitespace, etc.)
 
