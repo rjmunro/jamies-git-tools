@@ -11,7 +11,7 @@
 # Part of Jamie's Git Tools: https://github.com/rjmunro/jamies-git-tools
 
 set -euo pipefail
-# Requires: hub (https://github.com/github/hub)
+# Requires: gh (GitHub CLI - https://cli.github.com/)
 # Uses osascript and say from macOS to display notifications and speak the status
 # Requires: notify-send or zenity for Linux to display notifications
 
@@ -61,9 +61,9 @@ if [[ ${#BRANCHES[@]} -eq 0 ]]; then
   BRANCHES=($(git rev-parse --abbrev-ref HEAD))
 fi
 
-# Check if hub is available
-if ! command -v hub >/dev/null 2>&1; then
-  echo "Error: 'hub' command not found. Please install hub: https://github.com/github/hub"
+# Check if gh is available
+if ! command -v gh >/dev/null 2>&1; then
+  echo "Error: 'gh' command not found. Please install GitHub CLI: https://cli.github.com/"
   exit 1
 fi
 
@@ -99,11 +99,75 @@ send_notification() {
   fi
 }
 
+# Function to get CI status for a branch
+get_ci_status() {
+  local branch="$1"
+  local sha
+
+  # Get the SHA for the branch
+  sha=$(git rev-parse "$branch" 2>/dev/null) || return 1
+
+  # Try to get the PR status first (most reliable)
+  local pr_json
+  if pr_json=$(gh pr view "$branch" --json statusCheckRollup 2>/dev/null); then
+    local conclusion=$(echo "$pr_json" | grep -o '"conclusion":"[^"]*"' | head -1 | cut -d'"' -f4)
+    local state=$(echo "$pr_json" | grep -o '"state":"[^"]*"' | head -1 | cut -d'"' -f4)
+
+    # Map GitHub check states to hub-style outputs
+    if [[ "$state" == "PENDING" || "$state" == "IN_PROGRESS" ]]; then
+      echo "pending"
+      return 0
+    elif [[ "$conclusion" == "SUCCESS" ]]; then
+      echo "success"
+      return 0
+    elif [[ "$conclusion" == "FAILURE" ]]; then
+      echo "failure"
+      return 1
+    elif [[ "$conclusion" == "CANCELLED" ]]; then
+      echo "error"
+      return 1
+    fi
+  fi
+
+  # Fall back to checking workflow runs directly
+  local run_json
+  if run_json=$(gh run list --branch "$branch" --limit 1 --json status,conclusion 2>/dev/null); then
+    local status=$(echo "$run_json" | grep -o '"status":"[^"]*"' | head -1 | cut -d'"' -f4)
+    local conclusion=$(echo "$run_json" | grep -o '"conclusion":"[^"]*"' | head -1 | cut -d'"' -f4)
+
+    if [[ "$status" == "in_progress" || "$status" == "queued" ]]; then
+      echo "pending"
+      return 0
+    elif [[ "$conclusion" == "success" ]]; then
+      echo "success"
+      return 0
+    elif [[ "$conclusion" == "failure" ]]; then
+      echo "failure"
+      return 1
+    elif [[ -n "$conclusion" ]]; then
+      echo "error"
+      return 1
+    fi
+  fi
+
+  # No status found
+  echo "no status"
+  return 0
+}
+
 # Function to open PR page for a branch
 open_pr_page() {
   local branch="$1"
   echo "Opening PR page for $branch..."
-  hub pr show -h "$branch" || hub compare "$branch"
+
+  # Try to view existing PR
+  if gh pr view "$branch" --web 2>/dev/null; then
+    return 0
+  fi
+
+  # No PR exists, open the PR creation page in the browser
+  # This will open GitHub's PR creation UI with the branch pre-selected
+  gh pr create --web --head "$branch" 2>/dev/null || true
 }
 
 # Initialize tracking
@@ -128,7 +192,7 @@ while [[ ${#PENDING_BRANCHES[@]} -gt 0 ]]; do
   # Check each pending branch
   for branch in "${PENDING_BRANCHES[@]}"; do
     EXIT_CODE=0
-    STATUS=$(hub ci-status "$branch" 2>/dev/null || EXIT_CODE=$?)
+    STATUS=$(get_ci_status "$branch" || EXIT_CODE=$?)
 
     # Determine if this branch should continue being monitored
     if [ "$STATUS" = "pending" ] || { [ "$GLOBAL_TRIES" -lt "$MAX_INITIAL_TRIES" ] && [ "$STATUS" = "no status" ]; }; then
