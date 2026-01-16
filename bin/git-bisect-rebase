@@ -11,15 +11,40 @@
 #
 # Part of Jamie's Git Tools: https://github.com/rjmunro/jamies-git-tools
 
+set -euo pipefail
+
+print_help() {
+  echo "Usage: git bisect-rebase <target-branch>"
+  echo ""
+  echo "Attempt to rebase the current branch onto <target-branch>."
+  echo "If the rebase fails due to conflicts, uses git bisect to find the"
+  echo "most recent commit that can be successfully rebased."
+  echo ""
+  echo "This works like 'git rebase <target-branch>' but with automatic"
+  echo "bisecting to find how much of your branch can be rebased cleanly."
+  echo ""
+  echo "Options:"
+  echo "  --help, -h      Show this help"
+  echo ""
+  echo "Arguments:"
+  echo "  <target-branch>  The branch to rebase onto (e.g., main, origin/develop)"
+  echo ""
+  echo "Examples:"
+  echo "  git bisect-rebase main           # Rebase current branch onto main"
+  echo "  git bisect-rebase origin/develop # Rebase onto remote develop"
+  echo ""
+  echo "After completion, run 'git bisect reset' to clean up the bisect state."
+  exit 0
+}
+
 # --- INTERNAL BISECT TEST FUNCTION ---
 # This part is executed when the script is called with the --bisect-test parameter
-if [ "$1" == "--bisect-test" ]; then
+if [ "${1:-}" == "--bisect-test" ]; then
   # The actual target branch name is passed as the second argument
   CURRENT_BRANCH="$2"
   PRE_TEST_HEAD=$(git rev-parse HEAD)
-  # Set -e is important here as well. If rebase fails, we want to exit with non-zero.
-  git rebase --no-update-refs HEAD "$CURRENT_BRANCH"
-  if [ $? -eq 0 ]; then
+  # If rebase fails, we want to exit with non-zero.
+  if git rebase --no-update-refs HEAD "$CURRENT_BRANCH"; then
     echo "Rebase test successful for current HEAD."
     git checkout -f "$PRE_TEST_HEAD" # Restore original HEAD
     exit 0 # Bisect 'good'
@@ -35,13 +60,33 @@ fi
 
 # --- MAIN SCRIPT LOGIC ---
 
-TARGET_BRANCH="$1"
+# Parse arguments
+TARGET_BRANCH=""
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --help|-h)
+      print_help
+      ;;
+    -*)
+      echo "Unknown option: $1"
+      echo "Use --help for usage information."
+      exit 1
+      ;;
+    *)
+      TARGET_BRANCH="$1"
+      shift
+      ;;
+  esac
+done
+
 CURRENT_BRANCH=$(git rev-parse --abbrev-ref HEAD)
 STASH_PERFORMED=false
 
 if [ -z "$TARGET_BRANCH" ]; then
-  echo "Usage: $0 <target-branch>"
-  echo "Example: $0 main"
+  echo "Error: No target branch specified."
+  echo ""
+  echo "Usage: git bisect-rebase <target-branch>"
+  echo "Use --help for more information."
   exit 1
 fi
 
@@ -90,12 +135,22 @@ else
   # We pass '--bisect-test' as the first argument, and the TARGET_BRANCH as the second.
   # $0 refers to the name of the current script.
   git bisect run "$0" --bisect-test "$CURRENT_BRANCH"
+
+  # Ensure we're back on the original branch after bisect
+  git checkout "$CURRENT_BRANCH"
 fi
 
 # If we stashed changes, pop them back
 if [ "$STASH_PERFORMED" = true ]; then
-    echo "Rebase was successful. Restoring stashed changes..."
+    echo "Restoring stashed changes..."
     git stash pop
 fi
 
-echo "Script finished. Run 'git bisect reset' to clean up the bisect state."
+echo ""
+echo "Bisect-rebase finished. Your branch '$CURRENT_BRANCH' is now at the most recent"
+echo "commit that can be rebased cleanly onto '$TARGET_BRANCH'."
+echo ""
+echo "Next steps:"
+echo "  git rebase refs/bisect/bad  # Try rebasing the first failing commit"
+echo "  git bisect reset            # Clean up bisect state when done"
+

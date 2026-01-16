@@ -25,6 +25,10 @@ the one single issue.
 git bisect-rebase <target-branch>
 ```
 
+## Options
+
+- `--help`, `-h`: Show help message and exit
+
 ## Parameters
 
 - `<target-branch>`: The branch to rebase onto (e.g., `main`, `develop`, `origin/main`)
@@ -44,6 +48,7 @@ git bisect-rebase <target-branch>
 3. Uses `git bisect` to binary search for the latest commit that can be rebased onto successfully
 4. Tests each commit by attempting a rebase (using an internal test function)
 5. Once the optimal commit is found, performs the rebase to that point
+6. Returns you to your original branch
 
 ## Examples
 
@@ -97,7 +102,7 @@ git bisect-rebase main
 You can then try to rebase onto the first unsuccessful commit found by the bisect:
 
 ```bash
-git rebase bisect-bad
+git rebase refs/bisect/bad
 ```
 
 This will hopefully present you with a simpler conflict to resolve. Once you have resolved any
