@@ -22,7 +22,7 @@ the one single issue.
 ## Usage
 
 ```bash
-git bisect-rebase <target-branch>
+git bisect-rebase <target-branch> [<branch>]
 ```
 
 ## Options
@@ -32,14 +32,16 @@ git bisect-rebase <target-branch>
 ## Parameters
 
 - `<target-branch>`: The branch to rebase onto (e.g., `main`, `develop`, `origin/main`)
+- `<branch>`: Optional. The branch to rebase. If omitted, uses the current branch.
 
 ## How It Works
 
 ### Phase 1: Direct Rebase Attempt
 
-1. Stashes any uncommitted changes (if present)
-2. Attempts to rebase the current branch directly onto the target branch
-3. If successful, restores stashed changes and exits
+1. If a branch is specified, checks it out first
+2. Stashes any uncommitted changes (if present)
+3. Attempts to rebase the current branch directly onto the target branch
+4. If successful, restores stashed changes and exits
 
 ### Phase 2: Bisect-Assisted Rebase (if direct rebase fails)
 
@@ -55,6 +57,9 @@ git bisect-rebase <target-branch>
 ```bash
 # Rebase current feature branch onto main
 git bisect-rebase main
+
+# Rebase a specific branch onto main
+git bisect-rebase main feature/new-api
 
 # Rebase onto a remote branch
 git bisect-rebase origin/develop

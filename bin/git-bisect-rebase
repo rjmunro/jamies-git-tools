@@ -14,13 +14,13 @@
 set -euo pipefail
 
 print_help() {
-  echo "Usage: git bisect-rebase <target-branch>"
+  echo "Usage: git bisect-rebase <target-branch> [<branch>]"
   echo ""
-  echo "Attempt to rebase the current branch onto <target-branch>."
+  echo "Attempt to rebase <branch> (or current branch) onto <target-branch>."
   echo "If the rebase fails due to conflicts, uses git bisect to find the"
   echo "most recent commit that can be successfully rebased."
   echo ""
-  echo "This works like 'git rebase <target-branch>' but with automatic"
+  echo "This works like 'git rebase <target-branch> [<branch>]' but with automatic"
   echo "bisecting to find how much of your branch can be rebased cleanly."
   echo ""
   echo "Options:"
@@ -28,9 +28,11 @@ print_help() {
   echo ""
   echo "Arguments:"
   echo "  <target-branch>  The branch to rebase onto (e.g., main, origin/develop)"
+  echo "  <branch>         Optional. The branch to rebase. Defaults to current branch."
   echo ""
   echo "Examples:"
   echo "  git bisect-rebase main           # Rebase current branch onto main"
+  echo "  git bisect-rebase main feature   # Rebase feature branch onto main"
   echo "  git bisect-rebase origin/develop # Rebase onto remote develop"
   echo ""
   echo "After completion, run 'git bisect reset' to clean up the bisect state."
@@ -62,6 +64,7 @@ fi
 
 # Parse arguments
 TARGET_BRANCH=""
+SOURCE_BRANCH=""
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --help|-h)
@@ -73,11 +76,24 @@ while [[ $# -gt 0 ]]; do
       exit 1
       ;;
     *)
-      TARGET_BRANCH="$1"
+      if [ -z "$TARGET_BRANCH" ]; then
+        TARGET_BRANCH="$1"
+      elif [ -z "$SOURCE_BRANCH" ]; then
+        SOURCE_BRANCH="$1"
+      else
+        echo "Error: Too many arguments."
+        echo "Use --help for usage information."
+        exit 1
+      fi
       shift
       ;;
   esac
 done
+
+# If source branch specified, check it out first
+if [ -n "$SOURCE_BRANCH" ]; then
+  git checkout "$SOURCE_BRANCH"
+fi
 
 CURRENT_BRANCH=$(git rev-parse --abbrev-ref HEAD)
 STASH_PERFORMED=false
@@ -85,7 +101,7 @@ STASH_PERFORMED=false
 if [ -z "$TARGET_BRANCH" ]; then
   echo "Error: No target branch specified."
   echo ""
-  echo "Usage: git bisect-rebase <target-branch>"
+  echo "Usage: git bisect-rebase <target-branch> [<branch>]"
   echo "Use --help for more information."
   exit 1
 fi
