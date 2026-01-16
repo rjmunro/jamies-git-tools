@@ -14,21 +14,21 @@
 set -euo pipefail
 
 print_help() {
-  echo "Usage: git bisect-rebase <target-branch> [<branch>]"
+  echo "Usage: git bisect-rebase [<upstream> [<branch>]]"
   echo ""
-  echo "Attempt to rebase <branch> (or current branch) onto <target-branch>."
+  echo "Attempt to rebase <branch> (or current branch) onto <upstream>."
   echo "If the rebase fails due to conflicts, uses git bisect to find the"
   echo "most recent commit that can be successfully rebased."
   echo ""
-  echo "This works like 'git rebase <target-branch> [<branch>]' but with automatic"
+  echo "This works like 'git rebase <upstream> [<branch>]' but with automatic"
   echo "bisecting to find how much of your branch can be rebased cleanly."
   echo ""
   echo "Options:"
   echo "  --help, -h      Show this help"
   echo ""
   echo "Arguments:"
-  echo "  <target-branch>  The branch to rebase onto (e.g., main, origin/develop)"
-  echo "  <branch>         Optional. The branch to rebase. Defaults to current branch."
+  echo "  <upstream>  The branch to rebase onto (e.g., main, origin/develop)"
+  echo "  <branch>    Optional. The branch to rebase. Defaults to current branch."
   echo ""
   echo "Examples:"
   echo "  git bisect-rebase main           # Rebase current branch onto main"
@@ -63,7 +63,7 @@ fi
 # --- MAIN SCRIPT LOGIC ---
 
 # Parse arguments
-TARGET_BRANCH=""
+UPSTREAM=""
 SOURCE_BRANCH=""
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -76,8 +76,8 @@ while [[ $# -gt 0 ]]; do
       exit 1
       ;;
     *)
-      if [ -z "$TARGET_BRANCH" ]; then
-        TARGET_BRANCH="$1"
+      if [ -z "$UPSTREAM" ]; then
+        UPSTREAM="$1"
       elif [ -z "$SOURCE_BRANCH" ]; then
         SOURCE_BRANCH="$1"
       else
@@ -98,15 +98,15 @@ fi
 CURRENT_BRANCH=$(git rev-parse --abbrev-ref HEAD)
 STASH_PERFORMED=false
 
-if [ -z "$TARGET_BRANCH" ]; then
-  echo "Error: No target branch specified."
+if [ -z "$UPSTREAM" ]; then
+  echo "Error: No upstream branch specified."
   echo ""
-  echo "Usage: git bisect-rebase <target-branch> [<branch>]"
+  echo "Usage: git bisect-rebase [<upstream> [<branch>]]"
   echo "Use --help for more information."
   exit 1
 fi
 
-echo "Attempting to rebase '$CURRENT_BRANCH' onto '$TARGET_BRANCH'..."
+echo "Attempting to rebase '$CURRENT_BRANCH' onto '$UPSTREAM'..."
 
 # --- STASHING LOGIC START ---
 # Check if there are any uncommitted changes (staged or unstaged)
@@ -124,7 +124,7 @@ fi
 # --- STASHING LOGIC END ---
 
 # Try the rebase directly
-if git rebase --no-update-refs "$TARGET_BRANCH"; then
+if git rebase --no-update-refs "$UPSTREAM"; then
   echo "Rebase successful!"
 else
   echo "Initial rebase failed. Starting bisect to find the earliest successful rebase point."
@@ -134,10 +134,10 @@ else
   git rebase --abort
 
   # Get the common ancestor as the start of the bisect range
-  COMMON_ANCESTOR=$(git merge-base "$TARGET_BRANCH" "$CURRENT_BRANCH")
+  COMMON_ANCESTOR=$(git merge-base "$UPSTREAM" "$CURRENT_BRANCH")
 
   if [ -z "$COMMON_ANCESTOR" ]; then
-    echo "Error: Could not find a common ancestor between '$TARGET_BRANCH' and '$CURRENT_BRANCH'."
+    echo "Error: Could not find a common ancestor between '$UPSTREAM' and '$CURRENT_BRANCH'."
     echo "This script might not be suitable for branches with no shared history."
     exit 1
   fi
@@ -145,7 +145,7 @@ else
   echo "Bisecting from '$COMMON_ANCESTOR' to '$CURRENT_BRANCH' to find the earliest successful rebase point."
 
   # Start git bisect
-  git bisect start "$TARGET_BRANCH" "$COMMON_ANCESTOR"
+  git bisect start "$UPSTREAM" "$COMMON_ANCESTOR"
 
   # Run the bisect, calling this script itself as the test
   # We pass '--bisect-test' as the first argument, and the TARGET_BRANCH as the second.
@@ -164,7 +164,7 @@ fi
 
 echo ""
 echo "Bisect-rebase finished. Your branch '$CURRENT_BRANCH' is now at the most recent"
-echo "commit that can be rebased cleanly onto '$TARGET_BRANCH'."
+echo "commit that can be rebased cleanly towards '$UPSTREAM'."
 echo ""
 echo "Next steps:"
 echo "  git rebase refs/bisect/bad  # Try rebasing the first failing commit"

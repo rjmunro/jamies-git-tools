@@ -1,28 +1,28 @@
 # git-bisect-rebase
 
-A script that attempts to rebase the current branch onto a target branch, and if the rebase fails
-due to conflicts, uses `git bisect` to find the latest commit that can be successfully rebased onto.
+A script that attempts to rebase the current branch onto an upstream branch, and if the rebase fails
+due to conflicts, uses `git bisect` to find the latest commit that can be successfully rebased.
 
 ## Overview
 
-When rebasing a long-running feature branch onto a target branch (like `main` or `develop`),
+When rebasing a long-running feature branch onto an upstream branch (like `main` or `develop`),
 conflicts can arise that make the rebase difficult or impossible to complete. This script
 intelligently handles such situations by:
 
 1. First attempting a direct rebase
-2. If that fails, using `git bisect` to find the latest commit in your branch that can be
-   successfully rebased onto the target branch without conflicts
+2. If that fails, using `git bisect` to find the most recent commit in the upstream branch
+   onto which your branch can be successfully rebased without conflicts
 3. Performing the rebase up to that successful point
 4. Automatically handling uncommitted changes by stashing and restoring them
 
-Once you have found the latest commit that can be rebased cleanly, you can exammine the tree and see
-what specifically caused the conflict. You can rebase try resolving the conflicts at that point for
+Once you have found the latest commit that can be rebased cleanly, you can examine the tree and see
+what specifically caused the conflict. You can try resolving the conflicts at that point for
 the one single issue.
 
 ## Usage
 
 ```bash
-git bisect-rebase <target-branch> [<branch>]
+git bisect-rebase [<upstream> [<branch>]]
 ```
 
 ## Options
@@ -31,7 +31,7 @@ git bisect-rebase <target-branch> [<branch>]
 
 ## Parameters
 
-- `<target-branch>`: The branch to rebase onto (e.g., `main`, `develop`, `origin/main`)
+- `<upstream>`: The branch to rebase onto (e.g., `main`, `develop`, `origin/main`)
 - `<branch>`: Optional. The branch to rebase. If omitted, uses the current branch.
 
 ## How It Works
@@ -40,14 +40,14 @@ git bisect-rebase <target-branch> [<branch>]
 
 1. If a branch is specified, checks it out first
 2. Stashes any uncommitted changes (if present)
-3. Attempts to rebase the current branch directly onto the target branch
+3. Attempts to rebase the current branch directly onto the upstream branch
 4. If successful, restores stashed changes and exits
 
 ### Phase 2: Bisect-Assisted Rebase (if direct rebase fails)
 
 1. Aborts the failed rebase
-2. Finds the common ancestor between the current branch and target branch
-3. Uses `git bisect` to binary search for the latest commit that can be rebased onto successfully
+2. Finds the common ancestor between the current branch and upstream branch
+3. Uses `git bisect` to binary search for the latest commit that can be rebased successfully
 4. Tests each commit by attempting a rebase (using an internal test function)
 5. Once the optimal commit is found, performs the rebase to that point
 6. Returns you to your original branch
