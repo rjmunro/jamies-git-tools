@@ -1,8 +1,34 @@
 # Installation
 
-To use these git tools, you need to make the scripts in the `bin/` directory available in your system's `PATH`. Here are the recommended approaches:
+To use these git tools, you need to make the scripts in the `bin/` directory available in your system's `PATH`.
 
-## Option 1: Add bin Directory to PATH (Recommended)
+## Windows with Git Bash (Recommended)
+
+For Windows users, we provide an automated PowerShell installation script:
+
+1. **Open PowerShell** (no admin privileges needed for user installation)
+
+2. **Navigate to the repository:**
+   ```powershell
+   cd C:\path\to\jamies-git-tools
+   ```
+
+3. **Run the installation script:**
+   ```powershell
+   .\windows-setup\Install-GitTools.ps1
+   ```
+
+4. **Open a new Git Bash window** and test:
+   ```bash
+   listgits
+   git resolve-formatting-conflicts --help
+   ```
+
+For detailed Windows setup instructions, troubleshooting, and advanced options, see [windows-setup/README.md](../windows-setup/README.md).
+
+## Linux/macOS Installation
+
+### Option 1: Add bin Directory to PATH (Recommended)
 
 This approach allows you to use the scripts directly from this repository without copying files.
 
@@ -25,7 +51,7 @@ This approach allows you to use the scripts directly from this repository withou
    source ~/.bashrc  # Or your respective shell config file
    ```
 
-## Option 2: Create Symbolic Links
+## Option 2: Create Symbolic Links (Linux/macOS)
 
 Create symbolic links to the scripts in a directory that's already in your PATH:
 
@@ -39,7 +65,7 @@ for script in bin/*; do
 done
 ```
 
-## Option 3: Copy Scripts to Local Bin
+## Option 3: Copy Scripts to Local Bin (Linux/macOS)
 
 Copy all scripts to your local bin directory:
 
@@ -63,14 +89,17 @@ listgits --help
 
 ## Requirements
 
-- Git repository
+- Git (with Git Bash for Windows users)
 - Bash shell environment
 - Python 3.6+ (for git-grep-blame)
 - Standard Unix utilities (sed, awk, etc.)
 
 ## Platform Support
 
-These tools are designed for Unix-like systems (Linux, macOS) and should work in:
-- Native Linux/macOS terminals
-- Windows Subsystem for Linux (WSL)
-- Git Bash on Windows (with some limitations)
+These tools work on:
+- **Windows** - Using Git Bash (fully supported with automated installer)
+- **Linux** - Native bash environment
+- **macOS** - Native bash/zsh environment  
+- **WSL** - Windows Subsystem for Linux
+
+**Note for Windows users:** These tools require Git Bash, which is included with [Git for Windows](https://git-scm.com/download/win). They will not work in standard Command Prompt or PowerShell (though the installer itself is a PowerShell script).

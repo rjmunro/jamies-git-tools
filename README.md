@@ -45,57 +45,25 @@ Tools for daily development tasks and project management:
 
 ## Installation
 
-To use these git tools, you need to make the scripts in the `bin/` directory available in your
-system's `PATH`. Here are the recommended approaches:
+### Windows (Git Bash)
 
-### Option 1: Add bin Directory to PATH (Recommended)
+For Windows users, we provide an automated PowerShell installer:
 
-This approach allows you to use the scripts directly from this repository without copying files.
-
-1. **Clone or download this repository to a permanent location:**
-
-   ```bash
-   git clone <repository-url> ~/git-tools
-   cd ~/git-tools
-   ```
-
-2. **Add the bin directory to your PATH by adding this line to your shell configuration file** (e.g., `~/.bashrc`, `~/.zshrc`, `~/.profile`):
-
-   ```bash
-   export PATH="$HOME/git-tools/bin:$PATH"
-   ```
-
-3. **Reload your shell configuration:**
-
-   ```bash
-   source ~/.bashrc  # Or your respective shell config file
-   ```
-
-### Option 2: Create Symbolic Links
-
-Create symbolic links to the scripts in a directory that's already in your PATH:
-
-```bash
-# Create ~/.local/bin if it doesn't exist
-mkdir -p ~/.local/bin
-
-# Create symbolic links for all scripts
-for script in bin/*; do
-    ln -sf "$(pwd)/$script" ~/.local/bin/
-done
+```powershell
+.\windows-setup\Install-GitTools.ps1
 ```
 
-### Option 3: Copy Scripts to Local Bin
+See [windows-setup/README.md](windows-setup/README.md) for detailed Windows installation instructions.
 
-Copy all scripts to your local bin directory:
+### Linux/macOS
+
+**Quick install:** Add the bin directory to your PATH by adding this to `~/.bashrc` or `~/.zshrc`:
 
 ```bash
-# Create ~/.local/bin if it doesn't exist
-mkdir -p ~/.local/bin
-
-# Copy all scripts
-cp bin/* ~/.local/bin/
+export PATH="/path/to/jamies-git-tools/bin:$PATH"
 ```
+
+See [website/installation.md](website/installation.md) for complete installation options including symbolic links and copying scripts.
 
 ### Verification
 
@@ -104,7 +72,6 @@ After installation, open a new terminal and verify the tools are available:
 ```bash
 git resolve-formatting-conflicts --help
 listgits --help
-# etc.
 ```
 
 ## Usage
