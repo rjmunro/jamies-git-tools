@@ -2,87 +2,83 @@
 
 This folder contains tools to help you install and use Jamie's Git Tools on Windows.
 
-## Quick Start - Git Bash
+## Quick Start
 
-1. **Open PowerShell** (you don't need administrator privileges for user-level installation)
+1. **Open PowerShell** (no admin privileges needed)
 
-2. **Navigate to the repository root:**
+2. **Navigate to the repository:**
    ```powershell
    cd c:\path\to\jamies-git-tools
    ```
 
-3. **Run the installation script:**
+3. **Run the installer:**
    ```powershell
-   .\windows-setup\Install-GitTools.ps1
+   .\windows-setup\Install-Tools.ps1 -Install
    ```
 
-4. **Open a NEW Git Bash window** and test:
+4. **Test in Git Bash** (open a new window):
    ```bash
    listgits
    git resolve-formatting-conflicts --help
    ```
 
-## Optional - PowerShell Integration
+5. **Test in PowerShell** (reload profile):
+   ```powershell
+   . $PROFILE
+   listgits
+   ```
 
-To use the tools directly in PowerShell (not just Git Bash), run:
+## Installation Options
 
+### Install for Both (Recommended)
 ```powershell
-.\windows-setup\Add-To-PowerShellProfile.ps1
+.\windows-setup\Install-Tools.ps1 -Install
 ```
 
-Then reload your profile:
+### Install for Git Bash Only
 ```powershell
-. $PROFILE
+.\windows-setup\Install-Tools.ps1 -InstallGitBash
 ```
 
-Now you can run the tools directly in PowerShell:
+### Install for PowerShell Only
 ```powershell
-listgits
-git-rebase-all
+.\windows-setup\Install-Tools.ps1 -InstallPowerShell
 ```
 
-**Note:** The tools still run through Git Bash behind the scenes, but you can call them from PowerShell.
-
-## Installation Script Options
-
-### User Installation (Default)
-Installs for the current user only. No administrator privileges required.
-
+### Install for PowerShell Only
 ```powershell
-.\windows-setup\Install-GitTools.ps1
+.\windows-setup\Install-Tools.ps1 -InstallPowerShell
 ```
 
-### System-Wide Installation
-Installs for all users. Requires administrator privileges.
+## Advanced Options
 
+### System-Wide Installation (Requires Admin)
 ```powershell
-.\windows-setup\Install-GitTools.ps1 -Scope Machine
+.\windows-setup\Install-Tools.ps1 -InstallGitBash -Scope Machine
 ```
 
 ### Custom Git Bash Location
-If Git Bash is installed in a non-standard location:
-
 ```powershell
-.\windows-setup\Install-GitTools.ps1 -GitBashPath "C:\Custom\Path\To\Git"
+.\windows-setup\Install-Tools.ps1 -Install -GitBashPath "C:\Custom\Path\To\Git"
 ```
 
-## What the Script Does
+### PowerShell Profile Scope
+```powershell
+.\windows-setup\Install-Tools.ps1 -InstallPowerShell -PowerShellProfileScope CurrentUserAllHosts
+```
 
-The installation script performs these steps:
+## What the Installer Does
 
-1. **Adds the `bin` directory to your Windows PATH**
-   - For User scope: Modifies user environment variables
-   - For Machine scope: Modifies system environment variables
-   - Allows you to run tools from PowerShell/Command Prompt
+**For Git Bash:**
+1. Adds the `bin` directory to your Windows PATH
+2. Updates `~/.bashrc` to include the tools in Git Bash's PATH
+3. Ensures `.bash_profile` sources `.bashrc` if needed
+4. Verifies installation
 
-2. **Configures Git Bash integration**
-   - Updates `~/.bashrc` to include the tools in Git Bash's PATH
-   - Ensures `.bash_profile` sources `.bashrc` if needed
-   - Converts Windows paths to Unix-style paths for Git Bash
-
-3. **Verifies the installation**
-   - Checks that scripts are present
-   - Displays next steps
+**For PowerShell:**
+1. Creates wrapper functions in your PowerShell profile
+2. Functions call Git Bash behind the scenes
+3. Enables running tools directly from PowerShell
 
 ## Requirements
 

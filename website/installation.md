@@ -4,24 +4,30 @@ To use these git tools, you need to make the scripts in the `bin/` directory ava
 
 ## Windows with Git Bash (Recommended)
 
-For Windows users, we provide an automated PowerShell installation script:
+For Windows users, we provide an automated PowerShell installer:
 
-1. **Open PowerShell** (no admin privileges needed for user installation)
+1. **Open PowerShell**
 
 2. **Navigate to the repository:**
    ```powershell
    cd C:\path\to\jamies-git-tools
    ```
 
-3. **Run the installation script:**
+3. **Run the installer:**
    ```powershell
-   .\windows-setup\Install-GitTools.ps1
+   .\windows-setup\Install-Tools.ps1 -Install
    ```
 
-4. **Open a new Git Bash window** and test:
+4. **Test in Git Bash** (open a new window):
    ```bash
    listgits
    git resolve-formatting-conflicts --help
+   ```
+
+5. **Test in PowerShell** (reload profile):
+   ```powershell
+   . $PROFILE
+   listgits
    ```
 
 For detailed Windows setup instructions, troubleshooting, and advanced options, see [windows-setup/README.md](../windows-setup/README.md).

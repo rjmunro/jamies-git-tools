@@ -50,7 +50,7 @@ Tools for daily development tasks and project management:
 For Windows users, we provide an automated PowerShell installer:
 
 ```powershell
-.\windows-setup\Install-GitTools.ps1
+.\windows-setup\Install-Tools.ps1 -Install
 ```
 
 See [windows-setup/README.md](windows-setup/README.md) for detailed Windows installation instructions.
