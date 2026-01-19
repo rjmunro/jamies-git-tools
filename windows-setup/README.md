@@ -1,8 +1,8 @@
 # Windows Setup for Jamie's Git Tools
 
-This folder contains tools to help you install and use Jamie's Git Tools on Windows with Git Bash.
+This folder contains tools to help you install and use Jamie's Git Tools on Windows.
 
-## Quick Start
+## Quick Start - Git Bash
 
 1. **Open PowerShell** (you don't need administrator privileges for user-level installation)
 
@@ -21,6 +21,27 @@ This folder contains tools to help you install and use Jamie's Git Tools on Wind
    listgits
    git resolve-formatting-conflicts --help
    ```
+
+## Optional - PowerShell Integration
+
+To use the tools directly in PowerShell (not just Git Bash), run:
+
+```powershell
+.\windows-setup\Add-To-PowerShellProfile.ps1
+```
+
+Then reload your profile:
+```powershell
+. $PROFILE
+```
+
+Now you can run the tools directly in PowerShell:
+```powershell
+listgits
+git-rebase-all
+```
+
+**Note:** The tools still run through Git Bash behind the scenes, but you can call them from PowerShell.
 
 ## Installation Script Options
 
