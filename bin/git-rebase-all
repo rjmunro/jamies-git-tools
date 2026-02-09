@@ -8,6 +8,31 @@
 #
 # Part of Jamie's Git Tools: https://github.com/rjmunro/jamies-git-tools
 
+set -euo pipefail
+
+print_help() {
+  echo "Usage: git rebase-all [options] [<upstream>]"
+  echo ""
+  echo "Output rebase commands for all local tip branches onto <upstream>."
+  echo "By default, skips branches that are fully pushed to a remote."
+  echo ""
+  echo "Options:"
+  echo "  --include-pushed  Include branches that are fully pushed to a remote"
+  echo "  --help, -h        Show this help"
+  echo ""
+  echo "Arguments:"
+  echo "  <upstream>  The branch to rebase onto. If not specified, uses the first"
+  echo "              available of: develop, origin/develop, main, origin/main,"
+  echo "              master, origin/master"
+  echo ""
+  echo "Examples:"
+  echo "  git rebase-all                  # Output rebase commands for unpushed branches"
+  echo "  git rebase-all main             # Rebase onto main"
+  echo "  git rebase-all --include-pushed # Include fully pushed branches"
+  echo "  git rebase-all | bash           # Actually run the rebase commands"
+  exit 0
+}
+
 SKIP_PUSHED=true
 BASE_BRANCH=""
 
@@ -16,11 +41,22 @@ DEFAULT_BASE_BRANCHES=("develop" "origin/develop" "main" "origin/main" "master" 
 
 # Handle script arguments
 for arg in "$@"; do
-  if [ "$arg" == "--include-pushed" ]; then
-    SKIP_PUSHED=false
-  else
-    BASE_BRANCH="$arg"
-  fi
+  case "$arg" in
+    --help|-h)
+      print_help
+      ;;
+    --include-pushed)
+      SKIP_PUSHED=false
+      ;;
+    -*)
+      echo "Unknown option: $arg"
+      echo "Use --help for usage information."
+      exit 1
+      ;;
+    *)
+      BASE_BRANCH="$arg"
+      ;;
+  esac
 done
 
 # If no base branch specified, find the first existing one
