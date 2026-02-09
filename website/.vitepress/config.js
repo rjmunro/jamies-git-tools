@@ -61,6 +61,7 @@ export default defineConfig({
         text: "🛠️ Development Workflow",
         collapsed: false,
         items: [
+          { text: "git-all", link: "/tools/git-all" },
           { text: "watch-ci", link: "/tools/watch-ci" },
           { text: "listgits", link: "/tools/listgits" },
           { text: "makeHumansTxt", link: "/tools/makeHumansTxt" },

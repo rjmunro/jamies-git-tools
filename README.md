@@ -35,6 +35,7 @@ Tools for fine-grained control over what gets committed:
 
 Tools for daily development tasks and project management:
 
+- [git-all](doc/git-all.md) - Run a git command across all repositories in the current directory.
 - [git-rebase-all](doc/git-rebase-all.md) - Generates rebase commands for all tip branches to keep
   them up-to-date with a base branch.
 - [watch-ci](doc/watch-ci.md) - Monitors CI status of a branch and provides desktop/audio

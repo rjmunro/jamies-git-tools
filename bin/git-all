@@ -1,0 +1,53 @@
+#!/bin/bash
+
+# git-all
+# Copyright (c) 2025 Robert (Jamie) Munro
+# Licensed under the MIT License
+#
+# Run a git command in all subdirectories containing .git folders
+#
+# Part of Jamie's Git Tools: https://github.com/rjmunro/jamies-git-tools
+
+set -euo pipefail
+
+print_help() {
+  echo "Usage: git all <command> [args...]"
+  echo ""
+  echo "Run a git command in all subdirectories containing .git folders."
+  echo ""
+  echo "Options:"
+  echo "  --help, -h      Show this help"
+  echo ""
+  echo "Arguments:"
+  echo "  <command>       The git command to run (e.g., fetch, status, pull)"
+  echo "  [args...]       Additional arguments to pass to the git command"
+  echo ""
+  echo "Examples:"
+  echo "  git all fetch --all    # Fetch all remotes in all repos"
+  echo "  git all status         # Show status of all repos"
+  echo "  git all pull           # Pull in all repos"
+  echo "  git all branch -vv     # Show branches in all repos"
+  exit 0
+}
+
+# Handle help flag
+if [ "${1:-}" = "--help" ] || [ "${1:-}" = "-h" ]; then
+  print_help
+fi
+
+if [ $# -eq 0 ]; then
+  echo "Error: No command specified."
+  echo ""
+  echo "Usage: git all <command> [args...]"
+  echo "Use --help for more information."
+  exit 1
+fi
+
+exitcode=0
+for i in */.git; do
+    d=$(dirname "$i")
+    echo
+    echo "==== $d ===="
+    git -C "$d" "$@" || exitcode=$?
+done
+exit $exitcode
