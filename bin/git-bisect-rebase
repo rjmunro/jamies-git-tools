@@ -42,11 +42,11 @@ print_help() {
 # --- INTERNAL BISECT TEST FUNCTION ---
 # This part is executed when the script is called with the --bisect-test parameter
 if [ "${1:-}" == "--bisect-test" ]; then
-  # The actual target branch name is passed as the second argument
-  CURRENT_BRANCH="$2"
+  # The branch to rebase is passed as the second argument
+  BRANCH_TO_REBASE="$2"
   PRE_TEST_HEAD=$(git rev-parse HEAD)
   # If rebase fails, we want to exit with non-zero.
-  if git rebase --no-update-refs HEAD "$CURRENT_BRANCH"; then
+  if git rebase --no-update-refs HEAD "$BRANCH_TO_REBASE"; then
     echo "Rebase test successful for current HEAD."
     git checkout -f "$PRE_TEST_HEAD" # Restore original HEAD
     exit 0 # Bisect 'good'
@@ -97,6 +97,19 @@ fi
 
 CURRENT_BRANCH=$(git rev-parse --abbrev-ref HEAD)
 STASH_PERFORMED=false
+BISECT_PERFORMED=false
+
+# Cleanup function to restore stashed changes on exit
+cleanup() {
+  if [ "$STASH_PERFORMED" = true ]; then
+    echo "Restoring stashed changes..."
+    if ! git stash pop; then
+      echo "Warning: Failed to restore stashed changes. Your changes are still in the stash."
+      echo "Run 'git stash pop' manually to restore them."
+    fi
+  fi
+}
+trap cleanup EXIT
 
 if [ -z "$UPSTREAM" ]; then
   echo "Error: No upstream branch specified."
@@ -115,11 +128,9 @@ git update-index --refresh >/dev/null 2>&1
 if ! git diff-files --quiet --exit-code || ! git diff-index --quiet --exit-code --cached HEAD; then
     # There are changes (unstaged or staged)
     echo "Detected uncommitted changes. Stashing them temporarily..."
-    # Using 'git stash push' for modern git, '-m' for message, '>/dev/null 2>&1' to suppress output
+    # Using 'git stash push' for modern git, '-m' for message
     git stash push -m "git-bisect-rebase: Temporary stash of working changes" > /dev/null 2>&1
     STASH_PERFORMED=true
-else
-    echo "No uncommitted changes to stash."
 fi
 # --- STASHING LOGIC END ---
 
@@ -148,25 +159,25 @@ else
   git bisect start "$UPSTREAM" "$COMMON_ANCESTOR"
 
   # Run the bisect, calling this script itself as the test
-  # We pass '--bisect-test' as the first argument, and the TARGET_BRANCH as the second.
+  # We pass '--bisect-test' as the first argument, and the branch to rebase as the second.
   # $0 refers to the name of the current script.
   git bisect run "$0" --bisect-test "$CURRENT_BRANCH"
+
+  BISECT_PERFORMED=true
 
   # Ensure we're back on the original branch after bisect
   git checkout "$CURRENT_BRANCH"
 fi
 
-# If we stashed changes, pop them back
-if [ "$STASH_PERFORMED" = true ]; then
-    echo "Restoring stashed changes..."
-    git stash pop
+echo ""
+if [ "$BISECT_PERFORMED" = true ]; then
+  echo "Bisect-rebase finished. Your branch '$CURRENT_BRANCH' is now at the most recent"
+  echo "commit that can be rebased cleanly onto '$UPSTREAM'."
+  echo ""
+  echo "Next steps:"
+  echo "  git rebase refs/bisect/bad  # Try rebasing the first failing commit"
+  echo "  git bisect reset            # Clean up bisect state when done"
+else
+  echo "Rebase of '$CURRENT_BRANCH' onto '$UPSTREAM' completed successfully."
 fi
-
-echo ""
-echo "Bisect-rebase finished. Your branch '$CURRENT_BRANCH' is now at the most recent"
-echo "commit that can be rebased cleanly towards '$UPSTREAM'."
-echo ""
-echo "Next steps:"
-echo "  git rebase refs/bisect/bad  # Try rebasing the first failing commit"
-echo "  git bisect reset            # Clean up bisect state when done"
 
