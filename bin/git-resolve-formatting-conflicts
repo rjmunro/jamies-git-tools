@@ -75,11 +75,23 @@ detect_formatters() {
   local has_black=false
   local has_rustfmt=false
 
-  # Check for Prettier config files
-  if [[ -f .prettierrc || -f .prettierrc.json || -f .prettierrc.js || -f .prettierrc.yml || -f .prettierrc.yaml || -f prettier.config.js ]] || grep -q '"prettier"' package.json 2>/dev/null; then
-    if command -v npx >/dev/null 2>&1 && npx prettier --version >/dev/null 2>&1; then
+  # Check for Prettier - look for config files OR if prettier is installed
+  # Check if prettier is available without triggering npx install prompts
+  local prettier_available=false
+  if [[ -f node_modules/.bin/prettier ]] || command -v prettier >/dev/null 2>&1; then
+    prettier_available=true
+  elif command -v npm >/dev/null 2>&1 && npm list prettier >/dev/null 2>&1; then
+    prettier_available=true
+  fi
+
+  if [[ "$prettier_available" == "true" ]]; then
+    if [[ -f .prettierrc || -f .prettierrc.json || -f .prettierrc.js || -f .prettierrc.yml || -f .prettierrc.yaml || -f prettier.config.js ]] || grep -q '"prettier"' package.json 2>/dev/null; then
       has_prettier=true
       echo "  Detected: Prettier (config found)"
+    else
+      # Prettier is available but no local config found (possibly using shareable config)
+      has_prettier=true
+      echo "  Detected: Prettier (available, possibly using shareable config)"
     fi
   fi
 
