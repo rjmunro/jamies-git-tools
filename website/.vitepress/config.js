@@ -62,6 +62,7 @@ export default defineConfig({
         collapsed: false,
         items: [
           { text: "git-all", link: "/tools/git-all" },
+          { text: "git-checkout-default", link: "/tools/git-checkout-default" },
           { text: "watch-ci", link: "/tools/watch-ci" },
           { text: "listgits", link: "/tools/listgits" },
           { text: "makeHumansTxt", link: "/tools/makeHumansTxt" },
