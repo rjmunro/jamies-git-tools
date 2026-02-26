@@ -16,6 +16,10 @@
 # or zero if all commands in the pipeline exit successfully.
 set -euo pipefail
 
+# Create temporary file for error logging
+ERROR_LOG=$(mktemp)
+HAS_FAILURES=false
+
 REMOVE_INDENTATION=false
 RELATIVE=false
 file_globs=()
@@ -142,56 +146,62 @@ format_file() {
     js|jsx|ts|tsx|vue)
       # ESLint for JavaScript/TypeScript files
       if [[ "$HAS_ESLINT" == "true" ]]; then
-        if npx eslint --fix --quiet "$file_path" 2>/dev/null; then
+        if npx eslint --fix --quiet "$file_path" 2>>"$ERROR_LOG"; then
           echo "    ESLint --fix applied successfully"
           formatted=true
         else
           echo "    Warning: ESLint --fix failed for $file_path"
+          HAS_FAILURES=true
         fi
       fi
 
       # Prettier for these files (if available)
       if [[ "$HAS_PRETTIER" == "true" ]]; then
-        if npx prettier --write --loglevel silent "$file_path" 2>/dev/null; then
+        if npx prettier --write --loglevel silent "$file_path" 2>>"$ERROR_LOG"; then
           echo "    Prettier applied successfully"
           formatted=true
         else
           echo "    Warning: Prettier failed for $file_path"
+          HAS_FAILURES=true
         fi
       fi
       ;;
     py)
       # Black for Python files
       if [[ "$HAS_BLACK" == "true" ]]; then
-        if black --quiet "$file_path" 2>/dev/null; then
+        if black --quiet "$file_path" 2>>"$ERROR_LOG"; then
           echo "    Black applied successfully"
           formatted=true
         else
           echo "    Warning: Black failed for $file_path"
+          HAS_FAILURES=true
         fi
       elif [[ "$HAS_PRETTIER" == "true" ]]; then
         # Fallback to Prettier if Black not available
-        if npx prettier --write --loglevel silent "$file_path" 2>/dev/null; then
+        if npx prettier --write --loglevel silent "$file_path" 2>>"$ERROR_LOG"; then
           echo "    Prettier applied successfully"
           formatted=true
+        else
+          HAS_FAILURES=true
         fi
       fi
       ;;
     rs)
       # rustfmt for Rust files
       if [[ "$HAS_RUSTFMT" == "true" ]]; then
-        if rustfmt "$file_path" 2>/dev/null; then
+        if rustfmt "$file_path" 2>>"$ERROR_LOG"; then
           echo "    rustfmt applied successfully"
           formatted=true
         else
           echo "    Warning: rustfmt failed for $file_path"
+          HAS_FAILURES=true
         fi
       fi
       ;;
     *)
       # For other file types, try Prettier if available
       if [[ "$HAS_PRETTIER" == "true" ]]; then
-        if npx prettier --write --loglevel silent "$file_path" 2>/dev/null; then
+        if npx prettier --write --loglevel silent "$file_path" 2>>"$ERROR_LOG"; then
           echo "    Prettier applied successfully"
           formatted=true
         else
@@ -291,3 +301,11 @@ done
 
 echo "✅ All formatting merge conflicts processed."
 echo "Review any files that still have conflicts and stage them manually."
+
+# Handle error log
+if [[ "$HAS_FAILURES" == "true" ]]; then
+  echo ""
+  echo "⚠️  Some formatters failed. Error details saved to: $ERROR_LOG"
+else
+  rm -f "$ERROR_LOG"
+fi
