@@ -124,7 +124,7 @@ echo "Attempting to rebase '$CURRENT_BRANCH' onto '$UPSTREAM'..."
 # --- STASHING LOGIC START ---
 # Check if there are any uncommitted changes (staged or unstaged)
 # git update-index --refresh ensures the index is up-to-date
-git update-index --refresh >/dev/null 2>&1
+git update-index --refresh >/dev/null 2>&1 || true
 if ! git diff-files --quiet --exit-code || ! git diff-index --quiet --exit-code --cached HEAD; then
     # There are changes (unstaged or staged)
     echo "Detected uncommitted changes. Stashing them temporarily..."
