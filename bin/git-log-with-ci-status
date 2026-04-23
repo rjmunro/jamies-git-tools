@@ -1,0 +1,81 @@
+#!/bin/bash
+
+# git-log-with-ci-status
+# Copyright (c) 2025 Robert (Jamie) Munro
+# Licensed under the MIT License
+#
+# Show recent git log with inline CI status icons.
+# Unlike watch-ci, this is a one-shot snapshot — useful for a quick
+# overview of which commits on a branch are passing or failing.
+#
+# Part of Jamie's Git Tools: https://github.com/rjmunro/jamies-git-tools
+#
+# Requires: hub (https://github.com/github/hub)
+
+set -euo pipefail
+
+usage() {
+  cat <<EOF
+Usage: git-log-with-ci-status [options] [<branch>]
+
+Show recent git log entries with inline CI status icons.
+
+Arguments:
+  <branch>         Branch or ref to log (default: current branch)
+
+Options:
+  -n <count>       Number of commits to show (default: 30)
+  -h, --help       Show this help message
+
+Examples:
+  git-log-with-ci-status
+  git-log-with-ci-status main
+  git-log-with-ci-status -n 10 origin/main
+
+Icons:
+  ✓  success
+  ✗  failure
+  ○  pending
+  ?  unknown / no CI status
+EOF
+}
+
+COUNT=30
+BRANCH=""
+
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    -h|--help)
+      usage
+      exit 0
+      ;;
+    -n)
+      COUNT="$2"
+      shift 2
+      ;;
+    -*)
+      echo "Unknown option: $1" >&2
+      usage >&2
+      exit 1
+      ;;
+    *)
+      BRANCH="$1"
+      shift
+      ;;
+  esac
+done
+
+if [[ -z "$BRANCH" ]]; then
+  BRANCH="$(git rev-parse --abbrev-ref HEAD)"
+fi
+
+git log --oneline --first-parent "-${COUNT}" "$BRANCH" | while read -r sha msg; do
+  status=$(hub ci-status "$sha" 2>/dev/null || echo "unknown")
+  case $status in
+    success) icon="✓" ;;
+    pending) icon="○" ;;
+    failure) icon="✗" ;;
+    *)       icon="?" ;;
+  esac
+  echo "$sha: $icon $msg"
+done

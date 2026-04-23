@@ -44,6 +44,8 @@ Tools for daily development tasks and project management:
   them up-to-date with a base branch.
 - [watch-ci](doc/watch-ci.md) - Monitors CI status of a branch and provides desktop/audio
   notifications when builds complete.
+- [git-log-with-ci-status](doc/git-log-with-ci-status.md) - Shows recent git log with inline CI
+  status icons — a one-shot snapshot of which commits are passing or failing.
 - [listgits](doc/listgits.md) - Quickly lists all git repositories in your home directory.
 - [makeHumansTxt](doc/makeHumansTxt.md) - Generates a humans.txt file listing contributors
   ordered by commit count.

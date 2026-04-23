@@ -65,6 +65,10 @@ export default defineConfig({
           { text: "git-all", link: "/tools/git-all" },
           { text: "git-checkout-default", link: "/tools/git-checkout-default" },
           { text: "watch-ci", link: "/tools/watch-ci" },
+          {
+            text: "git-log-with-ci-status",
+            link: "/tools/git-log-with-ci-status",
+          },
           { text: "listgits", link: "/tools/listgits" },
           { text: "makeHumansTxt", link: "/tools/makeHumansTxt" },
         ],
