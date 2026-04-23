@@ -40,6 +40,7 @@ export default defineConfig({
         items: [
           { text: "git-grep-blame", link: "/tools/git-grep-blame" },
           { text: "git-diff-sed", link: "/tools/git-diff-sed" },
+          { text: "git-diff-byte-count", link: "/tools/git-diff-byte-count" },
           {
             text: "git-branch-space-report",
             link: "/tools/git-branch-space-report",

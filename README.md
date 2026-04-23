@@ -19,6 +19,8 @@ Tools for exploring code history and understanding changes:
   modified each line matching a search pattern - perfect for code archaeology.
 - [git-diff-sed](doc/git-diff-sed.md) - **★** Applies sed transformations to the old version of a
   file before running git diff to ignore systematic changes like variable renames.
+- [git-diff-byte-count](doc/git-diff-byte-count.md) - Compares meaningful code size between
+  commits by stripping comments and whitespace before measuring — useful for validating refactors.
 - [git-branch-space-report](doc/git-branch-space-report.md) - Reports disk space used by each
   branch to identify storage-heavy branches.
 
