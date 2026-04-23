@@ -118,7 +118,8 @@ conflicts, you can try the rebase again from that point.
 
 ## Cleanup
 
-After the script completes, make sure to clean up:
+After you have finished resolving conflicts with `git rebase refs/bisect/bad`, clean up the
+bisect state:
 
 ```bash
 git bisect reset
