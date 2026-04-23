@@ -52,6 +52,8 @@ The script:
 1. Finds all directories containing a `.git` folder in the current directory
 2. For each repository found, prints a header with the directory name
 3. Runs the specified git command in that directory
+4. Exits with a non-zero code if any repository's command failed (but continues running in all repos regardless)
+4. Exits with a non-zero code if any repository's command failed (but continues running in all repos regardless)
 
 ## Requirements
 
