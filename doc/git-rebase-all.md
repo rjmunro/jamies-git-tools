@@ -32,6 +32,7 @@ git rebase-all --include-pushed develop
 
 - `--include-pushed`: Include branches that are fully synchronized with their upstream remote
 - `<base-branch>`: The base branch to rebase onto (default: auto-detected)
+- `--help`, `-h`: Show help message and exit
 
 ## Base Branch Detection
 
