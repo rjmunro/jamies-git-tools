@@ -67,7 +67,6 @@ if git rebase --no-update-refs "$TARGET_BRANCH"; then
   echo "Rebase successful!"
 else
   echo "Initial rebase failed. Starting bisect to find the earliest successful rebase point."
-  echo "You may need to resolve conflicts during the bisect process (if the bisect test stops)."
   echo "Reverting to original HEAD to start bisect."
 
   # Abort the failed rebase
