@@ -50,7 +50,7 @@ git bisect-rebase [<upstream> [<branch>]]
 3. Uses `git bisect` to binary search for the latest commit that can be rebased successfully
 4. Tests each commit by attempting a rebase (using an internal test function)
 5. Once the optimal commit is found, performs the rebase to that point
-6. Returns you to your original branch
+6. Returns you to your original branch and suggests next steps
 
 ## Examples
 
@@ -94,6 +94,7 @@ The script uses an internal test function that:
 
 - **Uncommitted changes**: The script automatically stashes and restores uncommitted changes
 - **Bisect cleanup**: After completion, run `git bisect reset` to clean up the bisect state
+- **Next steps**: After bisect completes, the script suggests the command to retry rebasing from the first problematic commit
 - **Partial success**: Even if not all commits can be rebased, you'll get as many as possible
 
 ## Workflow Example
@@ -104,13 +105,15 @@ git checkout feature/new-api
 git bisect-rebase main
 ```
 
-You can then try to rebase onto the first unsuccessful commit found by the bisect:
+If bisect finds problematic commits, the script will suggest:
+> To continue the rebase and start resolving the conflicts, use:
+> > git rebase refs/bisect/bad
 
 ```bash
 git rebase refs/bisect/bad
 ```
 
-This will hopefully present you with a simpler conflict to resolve. Once you have resolved any
+This will attempt to rebase onto the first unmergeeable commit, hopefully present you with a simpler conflict to resolve. Once you have resolved any
 conflicts, you can try the rebase again from that point.
 
 ## Cleanup

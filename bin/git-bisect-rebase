@@ -136,10 +136,9 @@ fi
 
 # Try the rebase directly
 if git rebase --no-update-refs "$UPSTREAM"; then
-  echo "Rebase successful!"
+  echo "Rebase complete!"
 else
   echo "Initial rebase failed. Starting bisect to find the earliest successful rebase point."
-  echo "Reverting to original HEAD to start bisect."
 
   # Abort the failed rebase
   git rebase --abort
@@ -152,8 +151,6 @@ else
     echo "This script might not be suitable for branches with no shared history."
     exit 1
   fi
-
-  echo "Bisecting from '$COMMON_ANCESTOR' to '$CURRENT_BRANCH' to find the earliest successful rebase point."
 
   # Start git bisect
   git bisect start "$UPSTREAM" "$COMMON_ANCESTOR"
@@ -180,4 +177,3 @@ if [ "$BISECT_PERFORMED" = true ]; then
 else
   echo "Rebase of '$CURRENT_BRANCH' onto '$UPSTREAM' completed successfully."
 fi
-
