@@ -35,6 +35,9 @@ Tools for fine-grained control over what gets committed:
 
 Tools for daily development tasks and project management:
 
+- [git-test-merge](doc/git-test-merge.md) - **★** Manages a temporary test-merge branch that combines
+  multiple feature branches for integrated testing, with `[target: branch]` commit metadata and
+  automatic cherry-picking back to target branches.
 - [git-rebase-all](doc/git-rebase-all.md) - Generates rebase commands for all tip branches to keep
   them up-to-date with a base branch.
 - [watch-ci](doc/watch-ci.md) - Monitors CI status of a branch and provides desktop/audio
