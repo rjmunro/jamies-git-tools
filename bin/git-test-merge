@@ -1,0 +1,674 @@
+#!/usr/bin/env python3
+"""
+git-test-merge
+Copyright (c) 2025 Robert (Jamie) Munro
+Licensed under the MIT License
+
+Manage a temporary test-merge branch that combines multiple feature branches,
+with metadata tracking to cherry-pick commits back to their target branches.
+
+This implements a GitButler-like workflow without needing GitButler:
+  1. Merge feature branches into a test-merge branch for integrated testing
+  2. Commit changes with [target: branch] metadata to record where they belong
+  3. Cherry-pick tagged commits back to their target branches automatically
+
+Part of Jamie's Git Tools: https://github.com/rjmunro/jamies-git-tools
+
+Usage:
+  git-test-merge status
+  git-test-merge create <branch>...
+  git-test-merge add <branch>...
+  git-test-merge update [<branch>...]
+  git-test-merge reset
+  git-test-merge cherry-pick [--execute]
+  git-test-merge install-hook
+  git-test-merge uninstall-hook
+  git-test-merge clean
+
+Commit message tags:
+  [target: branch]       cherry-pick this commit to branch
+  [target: a, b]         cherry-pick to multiple branches (comma-separated)
+  [test-only]            do not cherry-pick this commit
+"""
+
+from __future__ import annotations
+
+import argparse
+import json
+import os
+import re
+import subprocess
+import sys
+from pathlib import Path
+from typing import Dict, List, Optional, Tuple
+
+BRANCH_NAME = "test-merge"
+META_FILENAME = "test-merge-meta"
+TARGET_RE = re.compile(r'\[target:\s*([^\]]+)\]', re.IGNORECASE)
+TEST_ONLY_RE = re.compile(r'\[test-only\]', re.IGNORECASE)
+
+
+# ---------------------------------------------------------------------------
+# Helpers
+# ---------------------------------------------------------------------------
+
+def die(msg: str) -> None:
+    print(f"error: {msg}", file=sys.stderr)
+    sys.exit(1)
+
+
+def warn(msg: str) -> None:
+    print(f"warning: {msg}", file=sys.stderr)
+
+
+def run(*cmd: str, check: bool = True, capture: bool = True) -> subprocess.CompletedProcess:
+    r = subprocess.run(list(cmd), capture_output=capture, text=True)
+    if check and r.returncode != 0:
+        msg = r.stderr.strip() or f"Command failed: {' '.join(cmd)}"
+        die(msg)
+    return r
+
+
+def git(*args: str, check: bool = True, capture: bool = True) -> subprocess.CompletedProcess:
+    return run('git', *args, check=check, capture=capture)
+
+
+def git_out(*args: str, check: bool = True) -> str:
+    return git(*args, check=check).stdout.strip()
+
+
+def get_git_dir() -> Path:
+    return Path(git_out('rev-parse', '--git-dir'))
+
+
+def meta_path() -> Path:
+    return get_git_dir() / META_FILENAME
+
+
+def load_meta() -> Optional[dict]:
+    p = meta_path()
+    if not p.exists():
+        return None
+    with open(p) as f:
+        return json.load(f)
+
+
+def save_meta(meta: dict) -> None:
+    p = meta_path()
+    tmp = p.with_suffix('.tmp')
+    with open(tmp, 'w') as f:
+        json.dump(meta, f, indent=2)
+        f.write('\n')
+    tmp.replace(p)
+
+
+def get_base_branch() -> str:
+    r = git('config', '--get', 'test-merge.base-branch', check=False)
+    if r.returncode == 0 and r.stdout.strip():
+        return r.stdout.strip()
+    return 'origin/main'
+
+
+def branch_exists(branch: str) -> bool:
+    r = git('rev-parse', '--verify', branch, check=False)
+    return r.returncode == 0
+
+
+def current_branch() -> str:
+    r = git('symbolic-ref', '--short', 'HEAD', check=False)
+    if r.returncode == 0:
+        return r.stdout.strip()
+    return git_out('rev-parse', '--short', 'HEAD')  # detached HEAD fallback
+
+
+def ensure_branch_local(branch: str) -> bool:
+    """Return True if branch is available locally (fetching from origin if needed)."""
+    if branch_exists(branch):
+        return True
+    print(f"Branch '{branch}' not found locally, trying to fetch from origin...")
+    r = git('fetch', 'origin', f'{branch}:{branch}', check=False, capture=False)
+    return r.returncode == 0
+
+
+# ---------------------------------------------------------------------------
+# Commit parsing
+# ---------------------------------------------------------------------------
+
+def get_test_merge_commits(base: str) -> List[dict]:
+    """
+    Get first-parent non-merge commits on test-merge since base.
+    These are commits made directly to the test-merge branch (not the merged branches).
+    """
+    r = git(
+        'log', BRANCH_NAME, f'^{base}',
+        '--first-parent', '--no-merges',
+        '--format=%H%x00%s%x00%b%x1e',
+        check=False,
+    )
+    if r.returncode != 0 or not r.stdout.strip():
+        return []
+
+    commits = []
+    for record in r.stdout.split('\x1e'):
+        record = record.strip()
+        if not record:
+            continue
+        parts = record.split('\x00', 2)
+        if len(parts) < 2:
+            continue
+        sha = parts[0].strip()
+        subject = parts[1].strip()
+        body = parts[2].strip() if len(parts) > 2 else ''
+        full_msg = f"{subject}\n\n{body}".strip()
+        if sha:
+            commits.append({'sha': sha, 'subject': subject, 'message': full_msg})
+    return commits
+
+
+def parse_targets(msg: str) -> Optional[List[str]]:
+    """
+    Return list of target branches from commit message.
+    Returns [] for [test-only] (no cherry-pick needed).
+    Returns None if no metadata at all.
+    """
+    if TEST_ONLY_RE.search(msg):
+        return []
+    m = TARGET_RE.search(msg)
+    if m:
+        return [t.strip() for t in m.group(1).split(',') if t.strip()]
+    return None
+
+
+def get_pending_commits(meta: dict) -> List[dict]:
+    """Commits with [target:] tags that haven't been cherry-picked yet."""
+    cherry_picked = set(meta.get('cherry_picked', []))
+    base = meta.get('base', get_base_branch())
+    pending = []
+    for c in get_test_merge_commits(base):
+        if c['sha'] in cherry_picked:
+            continue
+        targets = parse_targets(c['message'])
+        if targets:  # None = no metadata; [] = test-only; non-empty = pending
+            pending.append({**c, 'targets': targets})
+    return pending
+
+
+def check_unprocessed(meta: dict, suggestion: str) -> None:
+    """Exit with an error if there are pending cherry-picks."""
+    pending = get_pending_commits(meta)
+    if not pending:
+        return
+    print(f"error: {len(pending)} commit(s) have [target:] tags not yet cherry-picked:", file=sys.stderr)
+    for c in pending:
+        print(f"  {c['sha'][:8]}  [{', '.join(c['targets'])}]  {c['subject']}", file=sys.stderr)
+    print(file=sys.stderr)
+    print(f"Run 'git-test-merge cherry-pick --execute' first, then '{suggestion}'.", file=sys.stderr)
+    sys.exit(1)
+
+
+# ---------------------------------------------------------------------------
+# Merge helper
+# ---------------------------------------------------------------------------
+
+def do_merge_branches(branches: List[str]) -> List[str]:
+    """Merge each branch into the current branch with --no-ff. Returns list of merged branches."""
+    merged = []
+    for branch in branches:
+        if not ensure_branch_local(branch):
+            warn(f"Branch '{branch}' not found locally or on origin — skipping.")
+            continue
+        print(f"Merging {branch}...")
+        r = git('merge', '--no-ff', branch, check=False, capture=False)
+        if r.returncode != 0:
+            git('merge', '--abort', capture=False)
+            warn(f"Merge conflict with '{branch}' — skipping.")
+            continue
+        merged.append(branch)
+    return merged
+
+
+def do_create(branches: List[str], base: str, existing_cherry_picked: Optional[List[str]] = None) -> None:
+    """Create the test-merge branch from base and merge the given branches."""
+    print(f"Creating '{BRANCH_NAME}' from {base}...")
+    git('checkout', '-B', BRANCH_NAME, base, capture=False)
+    merged = do_merge_branches(branches)
+    meta = {
+        'base': base,
+        'branches': merged,
+        'cherry_picked': existing_cherry_picked or [],
+    }
+    save_meta(meta)
+    print(f"\n'{BRANCH_NAME}' created with: {', '.join(merged) or '(none)'}")
+
+
+# ---------------------------------------------------------------------------
+# Subcommand: status
+# ---------------------------------------------------------------------------
+
+def cmd_status(args) -> None:
+    meta = load_meta()
+
+    if not branch_exists(BRANCH_NAME):
+        print(f"No '{BRANCH_NAME}' branch exists.")
+        if meta:
+            print("(Metadata from a previous session remains — run 'git-test-merge clean' to remove.)")
+        return
+
+    if not meta:
+        print(f"Branch '{BRANCH_NAME}' exists but has no git-test-merge metadata.")
+        return
+
+    base = meta.get('base', get_base_branch())
+    branches = meta.get('branches', [])
+    cherry_picked = set(meta.get('cherry_picked', []))
+
+    print(f"Branch:  {BRANCH_NAME}")
+    print(f"Base:    {base}")
+    print()
+
+    print("Merged branches:")
+    for b in branches:
+        if branch_exists(b):
+            # How many commits ahead of base?
+            r = git('log', '--oneline', f'{base}..{b}', check=False)
+            ahead = len(r.stdout.strip().splitlines()) if r.returncode == 0 else '?'
+            tag = f"+{ahead} ahead of base" if isinstance(ahead, int) and ahead > 0 else "up to date with base"
+            print(f"  ✓  {b}  ({tag})")
+        elif branch_exists(f'origin/{b}'):
+            print(f"  ⚠  {b}  (local branch gone, exists on origin)")
+        else:
+            print(f"  ✗  {b}  (not found locally or on origin)")
+    print()
+
+    all_commits = get_test_merge_commits(base)
+    tagged = [c for c in all_commits if parse_targets(c['message']) is not None]
+    done = [c for c in tagged if c['sha'] in cherry_picked]
+    pending = [c for c in tagged if c['sha'] not in cherry_picked and parse_targets(c['message'])]
+
+    print(f"Direct commits on {BRANCH_NAME}: {len(all_commits)}")
+    if tagged:
+        print(f"  Tagged:         {len(tagged)}")
+        print(f"  Cherry-picked:  {len(done)}")
+        print(f"  Pending:        {len(pending)}")
+
+    if pending:
+        print(f"\nPending cherry-picks:")
+        for c in pending:
+            targets_str = ', '.join(c['targets'])
+            print(f"  {c['sha'][:8]}  →  {targets_str}  |  {c['subject']}")
+        print(f"\nRun 'git-test-merge cherry-pick' to preview, or 'git-test-merge cherry-pick --execute' to apply.")
+    elif all_commits:
+        print("\nNo pending cherry-picks.")
+
+
+# ---------------------------------------------------------------------------
+# Subcommand: create
+# ---------------------------------------------------------------------------
+
+def cmd_create(args) -> None:
+    if branch_exists(BRANCH_NAME):
+        die(f"'{BRANCH_NAME}' already exists. Use 'git-test-merge add' or 'git-test-merge update'.")
+    do_create(args.branches, get_base_branch())
+
+
+# ---------------------------------------------------------------------------
+# Subcommand: add
+# ---------------------------------------------------------------------------
+
+def cmd_add(args) -> None:
+    base = get_base_branch()
+    if not branch_exists(BRANCH_NAME):
+        do_create(args.branches, base)
+        return
+
+    meta = load_meta() or {'base': base, 'branches': [], 'cherry_picked': []}
+
+    if current_branch() != BRANCH_NAME:
+        git('checkout', BRANCH_NAME, capture=False)
+
+    already = set(meta.get('branches', []))
+    new_branches = [b for b in args.branches if b not in already]
+    skipped = [b for b in args.branches if b in already]
+    for b in skipped:
+        warn(f"'{b}' is already merged — skipping.")
+
+    merged = do_merge_branches(new_branches)
+    meta['branches'] = list(already) + merged
+    save_meta(meta)
+    if merged:
+        print(f"\nAdded: {', '.join(merged)}")
+
+
+# ---------------------------------------------------------------------------
+# Subcommand: update
+# ---------------------------------------------------------------------------
+
+def cmd_update(args) -> None:
+    meta = load_meta()
+    if meta:
+        check_unprocessed(meta, 'git-test-merge update')
+
+    base = get_base_branch()
+    branches = args.branches or (meta.get('branches', []) if meta else [])
+    if not branches:
+        die("No branches specified and no stored branch list found.")
+
+    existing_cherry_picked = meta.get('cherry_picked', []) if meta else []
+
+    if branch_exists(BRANCH_NAME):
+        if current_branch() == BRANCH_NAME:
+            git('checkout', base, capture=False)
+        git('branch', '-D', BRANCH_NAME, capture=False)
+
+    do_create(branches, base, existing_cherry_picked)
+
+
+# ---------------------------------------------------------------------------
+# Subcommand: reset
+# ---------------------------------------------------------------------------
+
+def cmd_reset(args) -> None:
+    meta = load_meta()
+    if not meta:
+        die("No metadata found. Cannot reset without a stored branch list.")
+
+    check_unprocessed(meta, 'git-test-merge reset')
+
+    base = meta.get('base', get_base_branch())
+    branches = meta.get('branches', [])
+    if not branches:
+        die("Stored branch list is empty.")
+
+    existing_cherry_picked = meta.get('cherry_picked', [])
+
+    if branch_exists(BRANCH_NAME):
+        if current_branch() == BRANCH_NAME:
+            git('checkout', base, capture=False)
+        git('branch', '-D', BRANCH_NAME, capture=False)
+
+    do_create(branches, base, existing_cherry_picked)
+
+
+# ---------------------------------------------------------------------------
+# Subcommand: cherry-pick
+# ---------------------------------------------------------------------------
+
+def cmd_cherry_pick(args) -> None:
+    meta = load_meta()
+    if not meta:
+        die("No metadata found. Has a test-merge branch been created by git-test-merge?")
+
+    if not branch_exists(BRANCH_NAME):
+        die(f"'{BRANCH_NAME}' branch does not exist.")
+
+    pending = get_pending_commits(meta)
+
+    if not pending:
+        print("No pending cherry-picks.")
+        return
+
+    # Group by target branch, preserving commit chronological order per target
+    by_target: Dict[str, List[dict]] = {}
+    for c in pending:
+        for t in c['targets']:
+            by_target.setdefault(t, []).append(c)
+
+    if not args.execute:
+        print(f"Pending cherry-picks — dry run (use --execute to apply):\n")
+        for target, commits in by_target.items():
+            print(f"  → {target}")
+            for c in commits:
+                print(f"      {c['sha'][:8]}  {c['subject']}")
+        print()
+        print("Run 'git-test-merge cherry-pick --execute' to apply.")
+        return
+
+    cherry_picked: List[str] = list(meta.get('cherry_picked', []))
+    applied: List[Tuple[str, str]] = []
+    errors: List[str] = []
+    original_branch = current_branch()
+
+    for target, commits in by_target.items():
+        if not ensure_branch_local(target):
+            errors.append(f"Branch '{target}' not found locally or on origin — skipping.")
+            continue
+
+        git('checkout', target, capture=False)
+
+        for c in commits:
+            print(f"Cherry-picking {c['sha'][:8]} onto {target}: {c['subject']}")
+            r = git('cherry-pick', c['sha'], check=False, capture=False)
+            if r.returncode != 0:
+                # Mark as cherry_picked immediately — user will run `git cherry-pick --continue`
+                # to complete it, so we don't want to re-attempt it on next run.
+                if c['sha'] not in cherry_picked:
+                    cherry_picked.append(c['sha'])
+                meta['cherry_picked'] = cherry_picked
+                save_meta(meta)
+
+                print(file=sys.stderr)
+                print("Cherry-pick conflict! Resolve the conflict, then run:", file=sys.stderr)
+                print(f"  git add <resolved-files>", file=sys.stderr)
+                print(f"  git cherry-pick --continue", file=sys.stderr)
+                print(f"  git checkout {original_branch}", file=sys.stderr)
+                print(f"  git-test-merge cherry-pick --execute  # to continue with remaining commits", file=sys.stderr)
+                sys.exit(1)
+
+            if c['sha'] not in cherry_picked:
+                cherry_picked.append(c['sha'])
+            applied.append((c['sha'], target))
+
+    git('checkout', original_branch, capture=False)
+
+    meta['cherry_picked'] = cherry_picked
+    save_meta(meta)
+
+    for e in errors:
+        warn(e)
+
+    if applied:
+        print(f"\nCherry-picked {len(applied)} commit(s):")
+        for sha, target in applied:
+            print(f"  {sha[:8]}  →  {target}")
+
+    if errors:
+        sys.exit(1)
+
+
+# ---------------------------------------------------------------------------
+# Subcommand: install-hook / uninstall-hook
+# ---------------------------------------------------------------------------
+
+HOOK_MARKER = "# git-test-merge commit-msg hook"
+
+HOOK_SCRIPT = f"""\
+#!/usr/bin/env python3
+{HOOK_MARKER}
+# Installed by: git-test-merge install-hook
+# Enforces [target: branch] or [test-only] metadata on commits to {BRANCH_NAME}.
+# Bypass with: git commit --no-verify
+
+import json
+import os
+import re
+import subprocess
+import sys
+
+TARGET_RE = re.compile(r'\\[target:\\s*([^\\]]+)\\]', re.IGNORECASE)
+TEST_ONLY_RE = re.compile(r'\\[test-only\\]', re.IGNORECASE)
+BRANCH_NAME = "{BRANCH_NAME}"
+META_FILENAME = "{META_FILENAME}"
+
+
+def git_out(*args):
+    r = subprocess.run(['git'] + list(args), capture_output=True, text=True)
+    return r.stdout.strip() if r.returncode == 0 else None
+
+
+def main():
+    branch = git_out('symbolic-ref', '--short', 'HEAD')
+    if branch != BRANCH_NAME:
+        sys.exit(0)
+
+    msg_file = sys.argv[1]
+    with open(msg_file) as f:
+        msg = f.read()
+
+    # Strip comment lines before checking
+    stripped = '\\n'.join(l for l in msg.splitlines() if not l.startswith('#'))
+
+    if TARGET_RE.search(stripped) or TEST_ONLY_RE.search(stripped):
+        sys.exit(0)
+
+    # Load stored branches for the error message
+    branches = []
+    git_dir = git_out('rev-parse', '--git-dir')
+    if git_dir:
+        meta_path = os.path.join(git_dir, META_FILENAME)
+        if os.path.exists(meta_path):
+            try:
+                with open(meta_path) as f:
+                    branches = json.load(f).get('branches', [])
+            except Exception:
+                pass
+
+    print("\\033[33merror: commits to test-merge require metadata in the commit message.\\033[0m", file=sys.stderr)
+    print(file=sys.stderr)
+    print("Add one of these to your commit message:", file=sys.stderr)
+    if branches:
+        for b in branches:
+            print(f"  [target: {{b}}]", file=sys.stderr)
+    else:
+        print("  [target: your-branch-name]", file=sys.stderr)
+    print("  [target: branch-a, branch-b]  # multiple targets", file=sys.stderr)
+    print("  [test-only]                    # do not cherry-pick", file=sys.stderr)
+    print(file=sys.stderr)
+    print("Then amend with: git commit --amend", file=sys.stderr)
+    print("Or bypass with:  git commit --no-verify", file=sys.stderr)
+    sys.exit(1)
+
+
+if __name__ == '__main__':
+    main()
+"""
+
+
+def cmd_install_hook(args) -> None:
+    hooks_dir = get_git_dir() / 'hooks'
+    hooks_dir.mkdir(exist_ok=True)
+    hook_path = hooks_dir / 'commit-msg'
+
+    if hook_path.exists():
+        if HOOK_MARKER in hook_path.read_text():
+            print(f"Hook already installed at {hook_path}")
+            return
+        die(f"A commit-msg hook already exists at {hook_path}. Remove it first or install manually.")
+
+    hook_path.write_text(HOOK_SCRIPT)
+    hook_path.chmod(0o755)
+    print(f"Installed commit-msg hook at {hook_path}")
+
+
+def cmd_uninstall_hook(args) -> None:
+    hook_path = get_git_dir() / 'hooks' / 'commit-msg'
+
+    if not hook_path.exists():
+        print("No commit-msg hook found.")
+        return
+
+    if HOOK_MARKER not in hook_path.read_text():
+        die(f"The hook at {hook_path} was not installed by git-test-merge. Remove it manually.")
+
+    hook_path.unlink()
+    print(f"Removed commit-msg hook from {hook_path}")
+
+
+# ---------------------------------------------------------------------------
+# Subcommand: clean
+# ---------------------------------------------------------------------------
+
+def cmd_clean(args) -> None:
+    p = meta_path()
+    if not p.exists():
+        print("No metadata to clean.")
+        return
+    p.unlink()
+    print(f"Removed {p}")
+
+
+# ---------------------------------------------------------------------------
+# Argument parsing
+# ---------------------------------------------------------------------------
+
+def main() -> None:
+    parser = argparse.ArgumentParser(
+        prog='git-test-merge',
+        description='Manage a temporary test-merge branch for testing multiple branches together.',
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="""\
+subcommands:
+  status                   show test-merge status and pending cherry-picks
+  create <branch>...       create a new test-merge branch
+  add <branch>...          add branches to test-merge (creates if needed)
+  update [<branch>...]     recreate test-merge from scratch (warns if unprocessed commits)
+  reset                    recreate test-merge from stored branch list
+  cherry-pick [--execute]  cherry-pick tagged commits to their target branches
+  install-hook             install commit-msg hook to enforce metadata
+  uninstall-hook           remove the commit-msg hook
+  clean                    remove stored metadata
+
+commit message tags:
+  [target: branch]         cherry-pick this commit to branch
+  [target: a, b]           cherry-pick to multiple branches
+  [test-only]              do not cherry-pick this commit
+
+configuration:
+  git config test-merge.base-branch origin/main  (default: origin/main)
+""",
+    )
+
+    subparsers = parser.add_subparsers(dest='command', metavar='<command>')
+    subparsers.required = True
+
+    subparsers.add_parser('status', help='show test-merge status and pending cherry-picks')
+
+    p_create = subparsers.add_parser('create', help='create a new test-merge branch')
+    p_create.add_argument('branches', nargs='+', metavar='<branch>', help='branches to merge in')
+
+    p_add = subparsers.add_parser('add', help='add branches to test-merge (creates if needed)')
+    p_add.add_argument('branches', nargs='+', metavar='<branch>', help='branches to add')
+
+    p_update = subparsers.add_parser('update', help='recreate test-merge from scratch')
+    p_update.add_argument('branches', nargs='*', metavar='<branch>',
+                          help='branches to merge (defaults to stored list)')
+
+    subparsers.add_parser('reset', help='recreate test-merge from stored branch list')
+
+    p_cp = subparsers.add_parser('cherry-pick',
+                                  help='cherry-pick tagged commits to target branches (dry-run by default)')
+    p_cp.add_argument('--execute', action='store_true',
+                      help='actually apply the cherry-picks (default: dry-run preview)')
+
+    subparsers.add_parser('install-hook', help='install commit-msg hook for metadata enforcement')
+    subparsers.add_parser('uninstall-hook', help='remove the commit-msg hook')
+    subparsers.add_parser('clean', help='remove stored metadata')
+
+    args = parser.parse_args()
+
+    dispatch = {
+        'status': cmd_status,
+        'create': cmd_create,
+        'add': cmd_add,
+        'update': cmd_update,
+        'reset': cmd_reset,
+        'cherry-pick': cmd_cherry_pick,
+        'install-hook': cmd_install_hook,
+        'uninstall-hook': cmd_uninstall_hook,
+        'clean': cmd_clean,
+    }
+
+    dispatch[args.command](args)
+
+
+if __name__ == '__main__':
+    main()
