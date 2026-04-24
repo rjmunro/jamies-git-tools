@@ -130,6 +130,38 @@ def ensure_branch_local(branch: str) -> bool:
     return r.returncode == 0
 
 
+def merge_in_progress() -> bool:
+    return (get_git_dir() / 'MERGE_HEAD').exists()
+
+
+def branch_is_ancestor_of(ref: str, target: str) -> bool:
+    r = git('merge-base', '--is-ancestor', ref, target, check=False)
+    return r.returncode == 0
+
+
+def reconcile_pending_branch_add(meta: Optional[dict], verbose: bool = True) -> Optional[dict]:
+    if not meta:
+        return meta
+
+    pending_branch = meta.get('pending_branch_add')
+    if not pending_branch:
+        return meta
+
+    if merge_in_progress():
+        return meta
+
+    if branch_exists(BRANCH_NAME) and branch_exists(pending_branch) and branch_is_ancestor_of(pending_branch, BRANCH_NAME):
+        branches = meta.setdefault('branches', [])
+        if pending_branch not in branches:
+            branches.append(pending_branch)
+        meta.pop('pending_branch_add', None)
+        save_meta(meta)
+        if verbose:
+            print(f"Recorded manually resolved merge for '{pending_branch}'.")
+
+    return meta
+
+
 # ---------------------------------------------------------------------------
 # Commit parsing
 # ---------------------------------------------------------------------------
@@ -210,8 +242,12 @@ def check_unprocessed(meta: dict, suggestion: str) -> None:
 # Merge helper
 # ---------------------------------------------------------------------------
 
-def do_merge_branches(branches: List[str]) -> List[str]:
-    """Merge each branch into the current branch with --no-ff. Returns list of merged branches."""
+def do_merge_branches(branches: List[str], allow_conflict_resolution: bool = False) -> Tuple[List[str], Optional[str]]:
+    """Merge branches into the current branch.
+
+    Returns (merged_branches, pending_conflict_branch). When allow_conflict_resolution
+    is True, a single merge conflict is left in progress for the user to resolve.
+    """
     merged = []
     for branch in branches:
         if not ensure_branch_local(branch):
@@ -220,18 +256,20 @@ def do_merge_branches(branches: List[str]) -> List[str]:
         print(f"Merging {branch}...")
         r = git('merge', '--no-ff', branch, check=False, capture=False)
         if r.returncode != 0:
+            if allow_conflict_resolution:
+                return merged, branch
             git('merge', '--abort', capture=False)
             warn(f"Merge conflict with '{branch}' — skipping.")
             continue
         merged.append(branch)
-    return merged
+    return merged, None
 
 
 def do_create(branches: List[str], base: str, existing_cherry_picked: Optional[List[str]] = None) -> None:
     """Create the test-merge branch from base and merge the given branches."""
     print(f"Creating '{BRANCH_NAME}' from {base}...")
     git('checkout', '-B', BRANCH_NAME, base, capture=False)
-    merged = do_merge_branches(branches)
+    merged, _ = do_merge_branches(branches)
     meta = {
         'base': base,
         'branches': merged,
@@ -258,6 +296,8 @@ def cmd_status(args) -> None:
         print(f"Branch '{BRANCH_NAME}' exists but has no git-test-merge metadata.")
         return
 
+    meta = reconcile_pending_branch_add(meta)
+
     base = meta.get('base', get_base_branch())
     branches = meta.get('branches', [])
     cherry_picked = set(meta.get('cherry_picked', []))
@@ -278,12 +318,18 @@ def cmd_status(args) -> None:
             print(f"  ⚠  {b}  (local branch gone, exists on origin)")
         else:
             print(f"  ✗  {b}  (not found locally or on origin)")
+    pending_branch = meta.get('pending_branch_add')
+    if pending_branch:
+        if merge_in_progress():
+            print(f"  …  {pending_branch}  (merge conflict in progress; resolve and commit to finish adding it)")
+        else:
+            print(f"  …  {pending_branch}  (pending metadata update; if you completed the merge manually, rerun status)")
     print()
 
     all_commits = get_test_merge_commits(base)
     tagged = [c for c in all_commits if parse_targets(c['message']) is not None]
     done = [c for c in tagged if c['sha'] in cherry_picked]
-    pending = [c for c in tagged if c['sha'] not in cherry_picked and parse_targets(c['message'])]
+    pending = get_pending_commits(meta)
 
     print(f"Direct commits on {BRANCH_NAME}: {len(all_commits)}")
     if tagged:
@@ -322,6 +368,17 @@ def cmd_add(args) -> None:
         return
 
     meta = load_meta() or {'base': base, 'branches': [], 'cherry_picked': []}
+    meta = reconcile_pending_branch_add(meta)
+
+    pending_branch = meta.get('pending_branch_add')
+    if pending_branch:
+        if merge_in_progress():
+            die(
+                f"A merge for '{pending_branch}' is already in progress. Resolve it and commit, or run 'git merge --abort' first."
+            )
+        die(
+            f"A previous add for '{pending_branch}' is still pending. Complete that merge or remove 'pending_branch_add' from {meta_path()}."
+        )
 
     if current_branch() != BRANCH_NAME:
         git('checkout', BRANCH_NAME, capture=False)
@@ -332,7 +389,19 @@ def cmd_add(args) -> None:
     for b in skipped:
         warn(f"'{b}' is already merged — skipping.")
 
-    merged = do_merge_branches(new_branches)
+    allow_conflict_resolution = len(new_branches) == 1
+    merged, conflict_branch = do_merge_branches(new_branches, allow_conflict_resolution=allow_conflict_resolution)
+
+    if conflict_branch:
+        meta['pending_branch_add'] = conflict_branch
+        save_meta(meta)
+        print(file=sys.stderr)
+        print(f"Merge conflict while adding '{conflict_branch}'. Resolve the conflicts, then commit the merge.", file=sys.stderr)
+        print(file=sys.stderr)
+        print("After the merge commit, run 'git-test-merge status' (or any other git-test-merge command) and the metadata will be updated automatically.", file=sys.stderr)
+        print("If you want to abandon the add, run 'git merge --abort' and remove 'pending_branch_add' from the metadata file.", file=sys.stderr)
+        sys.exit(1)
+
     meta['branches'] = list(already) + merged
     save_meta(meta)
     if merged:
@@ -346,6 +415,7 @@ def cmd_add(args) -> None:
 def cmd_update(args) -> None:
     meta = load_meta()
     if meta:
+        meta = reconcile_pending_branch_add(meta)
         check_unprocessed(meta, 'git-test-merge update')
 
     base = get_base_branch()
@@ -372,6 +442,7 @@ def cmd_reset(args) -> None:
     if not meta:
         die("No metadata found. Cannot reset without a stored branch list.")
 
+    meta = reconcile_pending_branch_add(meta)
     check_unprocessed(meta, 'git-test-merge reset')
 
     base = meta.get('base', get_base_branch())
@@ -397,6 +468,8 @@ def cmd_cherry_pick(args) -> None:
     meta = load_meta()
     if not meta:
         die("No metadata found. Has a test-merge branch been created by git-test-merge?")
+
+    meta = reconcile_pending_branch_add(meta)
 
     if not branch_exists(BRANCH_NAME):
         die(f"'{BRANCH_NAME}' branch does not exist.")
