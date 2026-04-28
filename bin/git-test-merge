@@ -254,7 +254,7 @@ def do_merge_branches(branches: List[str], allow_conflict_resolution: bool = Fal
             warn(f"Branch '{branch}' not found locally or on origin — skipping.")
             continue
         print(f"Merging {branch}...")
-        r = git('merge', '--no-ff', branch, check=False, capture=False)
+        r = git('merge', '--no-ff', '--no-edit', branch, check=False, capture=False)
         if r.returncode != 0:
             if allow_conflict_resolution:
                 return merged, branch
