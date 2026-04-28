@@ -740,6 +740,21 @@ def cmd_clean(args) -> None:
     p.unlink()
     print(f"Removed {p}")
 
+    # Also uninstall the hook if we installed it
+    git_dir = try_get_git_dir()
+    if git_dir is None:
+        return
+    hooks_dir = git_dir / 'hooks'
+    hook_path = hooks_dir / 'commit-msg'
+    chained_path = hooks_dir / ('commit-msg' + CHAINED_HOOK_SUFFIX)
+
+    if hook_path.exists() and HOOK_MARKER in hook_path.read_text():
+        hook_path.unlink()
+        print(f"Removed commit-msg hook from {hook_path}")
+        if chained_path.exists():
+            chained_path.rename(hook_path)
+            print(f"Restored previous hook from {chained_path}")
+
 
 # ---------------------------------------------------------------------------
 # Argument parsing
