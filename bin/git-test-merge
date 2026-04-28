@@ -81,6 +81,13 @@ def get_git_dir() -> Path:
     return Path(git_out('rev-parse', '--git-dir'))
 
 
+def try_get_git_dir() -> Optional[Path]:
+    r = git('rev-parse', '--git-dir', check=False)
+    if r.returncode != 0:
+        return None
+    return Path(r.stdout.strip())
+
+
 def meta_path() -> Path:
     return get_git_dir() / META_FILENAME
 
@@ -267,6 +274,7 @@ def do_merge_branches(branches: List[str], allow_conflict_resolution: bool = Fal
 
 def do_create(branches: List[str], base: str, existing_cherry_picked: Optional[List[str]] = None) -> None:
     """Create the test-merge branch from base and merge the given branches."""
+    ensure_hook_installed()
     print(f"Creating '{BRANCH_NAME}' from {base}...")
     git('checkout', '-B', BRANCH_NAME, base, capture=False)
     merged, _ = do_merge_branches(branches)
@@ -554,6 +562,8 @@ def cmd_cherry_pick(args) -> None:
 
 HOOK_MARKER = "# git-test-merge commit-msg hook"
 
+CHAINED_HOOK_SUFFIX = ".pre-test-merge"
+
 HOOK_SCRIPT = f"""\
 #!/usr/bin/env python3
 {HOOK_MARKER}
@@ -571,6 +581,7 @@ TARGET_RE = re.compile(r'\\[target:\\s*([^\\]]+)\\]', re.IGNORECASE)
 TEST_ONLY_RE = re.compile(r'\\[test-only\\]', re.IGNORECASE)
 BRANCH_NAME = "{BRANCH_NAME}"
 META_FILENAME = "{META_FILENAME}"
+CHAINED_HOOK_SUFFIX = "{CHAINED_HOOK_SUFFIX}"
 
 
 def git_out(*args):
@@ -578,12 +589,36 @@ def git_out(*args):
     return r.stdout.strip() if r.returncode == 0 else None
 
 
+def call_chained_hook(msg_file):
+    hooks_dir = os.path.dirname(os.path.abspath(sys.argv[0]))
+    chained = os.path.join(hooks_dir, 'commit-msg' + CHAINED_HOOK_SUFFIX)
+    if os.path.isfile(chained) and os.access(chained, os.X_OK):
+        r = subprocess.run([chained, msg_file])
+        return r.returncode
+    return 0
+
+
+def load_branches():
+    git_dir = git_out('rev-parse', '--git-dir')
+    if not git_dir:
+        return []
+    meta_path = os.path.join(git_dir, META_FILENAME)
+    if not os.path.exists(meta_path):
+        return []
+    try:
+        with open(meta_path) as f:
+            return json.load(f).get('branches', [])
+    except Exception:
+        return []
+
+
 def main():
     branch = git_out('symbolic-ref', '--short', 'HEAD')
-    if branch != BRANCH_NAME:
-        sys.exit(0)
-
     msg_file = sys.argv[1]
+
+    if branch != BRANCH_NAME:
+        sys.exit(call_chained_hook(msg_file))
+
     with open(msg_file) as f:
         msg = f.read()
 
@@ -591,33 +626,37 @@ def main():
     stripped = '\\n'.join(l for l in msg.splitlines() if not l.startswith('#'))
 
     if TARGET_RE.search(stripped) or TEST_ONLY_RE.search(stripped):
-        sys.exit(0)
+        sys.exit(call_chained_hook(msg_file))
 
-    # Load stored branches for the error message
-    branches = []
-    git_dir = git_out('rev-parse', '--git-dir')
-    if git_dir:
-        meta_path = os.path.join(git_dir, META_FILENAME)
-        if os.path.exists(meta_path):
-            try:
-                with open(meta_path) as f:
-                    branches = json.load(f).get('branches', [])
-            except Exception:
-                pass
+    # Tag is missing — try to add it automatically
+    branches = load_branches()
 
-    print("\\033[33merror: commits to test-merge require metadata in the commit message.\\033[0m", file=sys.stderr)
+    if len(branches) == 1:
+        # Only one branch: auto-add the tag and let the commit proceed
+        with open(msg_file, 'a') as f:
+            f.write(f'\\n\\n[target: {{branches[0]}}]\\n')
+        print(f"\\033[33mNote: auto-added [target: {{branches[0]}}] to commit message.\\033[0m", file=sys.stderr)
+        sys.exit(call_chained_hook(msg_file))
+
+    # Multiple branches (or none): add a commented template and abort so the user can choose
+    with open(msg_file, 'a') as f:
+        f.write('\\n\\n')
+        if branches:
+            f.write('# Uncomment one of the following lines (required for git-test-merge):\\n')
+            for b in branches:
+                f.write(f'# [target: {{b}}]\\n')
+            f.write('# [target: branch-a, branch-b]  # cherry-pick to multiple branches\\n')
+        else:
+            f.write('# [target: your-branch-name]\\n')
+        f.write('# [test-only]  # do not cherry-pick this commit\\n')
+
+    print("\\033[33merror: commits to test-merge require a [target: ...] or [test-only] tag.\\033[0m", file=sys.stderr)
     print(file=sys.stderr)
-    print("Add one of these to your commit message:", file=sys.stderr)
-    if branches:
-        for b in branches:
-            print(f"  [target: {{b}}]", file=sys.stderr)
-    else:
-        print("  [target: your-branch-name]", file=sys.stderr)
-    print("  [target: branch-a, branch-b]  # multiple targets", file=sys.stderr)
-    print("  [test-only]                    # do not cherry-pick", file=sys.stderr)
+    print("A template has been added to your commit message.", file=sys.stderr)
+    print("Run 'git commit --amend' to open the editor, uncomment the appropriate line,", file=sys.stderr)
+    print("and remove the leading '#'.", file=sys.stderr)
     print(file=sys.stderr)
-    print("Then amend with: git commit --amend", file=sys.stderr)
-    print("Or bypass with:  git commit --no-verify", file=sys.stderr)
+    print("Or bypass with: git commit --no-verify", file=sys.stderr)
     sys.exit(1)
 
 
@@ -626,16 +665,43 @@ if __name__ == '__main__':
 """
 
 
+def ensure_hook_installed() -> None:
+    """Auto-install the commit-msg hook if not already present. Silent on no-op."""
+    git_dir = try_get_git_dir()
+    if git_dir is None:
+        return
+    hooks_dir = git_dir / 'hooks'
+    hooks_dir.mkdir(exist_ok=True)
+    hook_path = hooks_dir / 'commit-msg'
+    chained_path = hooks_dir / ('commit-msg' + CHAINED_HOOK_SUFFIX)
+
+    if hook_path.exists():
+        if HOOK_MARKER in hook_path.read_text():
+            return  # already installed
+        if chained_path.exists():
+            return  # can't chain safely, skip silently
+        hook_path.rename(chained_path)
+        print(f"git-test-merge: moved existing commit-msg hook to {chained_path.name}", file=sys.stderr)
+
+    hook_path.write_text(HOOK_SCRIPT)
+    hook_path.chmod(0o755)
+    print(f"git-test-merge: installed commit-msg hook at {hook_path}", file=sys.stderr)
+
+
 def cmd_install_hook(args) -> None:
     hooks_dir = get_git_dir() / 'hooks'
     hooks_dir.mkdir(exist_ok=True)
     hook_path = hooks_dir / 'commit-msg'
+    chained_path = hooks_dir / ('commit-msg' + CHAINED_HOOK_SUFFIX)
 
     if hook_path.exists():
         if HOOK_MARKER in hook_path.read_text():
             print(f"Hook already installed at {hook_path}")
             return
-        die(f"A commit-msg hook already exists at {hook_path}. Remove it first or install manually.")
+        if chained_path.exists():
+            die(f"Both {hook_path} and {chained_path} exist. Remove one manually first.")
+        hook_path.rename(chained_path)
+        print(f"Moved existing hook to {chained_path}")
 
     hook_path.write_text(HOOK_SCRIPT)
     hook_path.chmod(0o755)
@@ -643,7 +709,9 @@ def cmd_install_hook(args) -> None:
 
 
 def cmd_uninstall_hook(args) -> None:
-    hook_path = get_git_dir() / 'hooks' / 'commit-msg'
+    hooks_dir = get_git_dir() / 'hooks'
+    hook_path = hooks_dir / 'commit-msg'
+    chained_path = hooks_dir / ('commit-msg' + CHAINED_HOOK_SUFFIX)
 
     if not hook_path.exists():
         print("No commit-msg hook found.")
@@ -654,6 +722,10 @@ def cmd_uninstall_hook(args) -> None:
 
     hook_path.unlink()
     print(f"Removed commit-msg hook from {hook_path}")
+
+    if chained_path.exists():
+        chained_path.rename(hook_path)
+        print(f"Restored previous hook from {chained_path}")
 
 
 # ---------------------------------------------------------------------------
