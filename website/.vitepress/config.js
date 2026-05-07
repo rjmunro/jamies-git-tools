@@ -40,6 +40,7 @@ export default defineConfig({
         items: [
           { text: "git-grep-blame", link: "/tools/git-grep-blame" },
           { text: "git-diff-sed", link: "/tools/git-diff-sed" },
+          { text: "git-diff-byte-count", link: "/tools/git-diff-byte-count" },
           {
             text: "git-branch-space-report",
             link: "/tools/git-branch-space-report",
@@ -61,7 +62,13 @@ export default defineConfig({
         text: "🛠️ Development Workflow",
         collapsed: false,
         items: [
+          { text: "git-all", link: "/tools/git-all" },
+          { text: "git-checkout-default", link: "/tools/git-checkout-default" },
           { text: "watch-ci", link: "/tools/watch-ci" },
+          {
+            text: "git-log-with-ci-status",
+            link: "/tools/git-log-with-ci-status",
+          },
           { text: "listgits", link: "/tools/listgits" },
           { text: "makeHumansTxt", link: "/tools/makeHumansTxt" },
         ],

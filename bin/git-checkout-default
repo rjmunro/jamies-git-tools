@@ -1,0 +1,50 @@
+#!/bin/bash
+
+# git-checkout-default
+# Copyright (c) 2025 Robert (Jamie) Munro
+# Licensed under the MIT License
+#
+# Fetch all remotes and checkout the configured default branch
+#
+# Part of Jamie's Git Tools: https://github.com/rjmunro/jamies-git-tools
+
+set -euo pipefail
+
+print_help() {
+  echo "Usage: git checkout-default"
+  echo ""
+  echo "Fetch all remotes and checkout the configured default branch."
+  echo ""
+  echo "The default branch can be configured per-repo with:"
+  echo "  git config custom.defaultbranch <branch>"
+  echo ""
+  echo "If not configured, defaults to origin/main."
+  echo ""
+  echo "Options:"
+  echo "  --help, -h      Show this help"
+  echo ""
+  echo "Examples:"
+  echo "  git checkout-default                              # Checkout default branch"
+  echo "  git config custom.defaultbranch origin/develop    # Set default to develop"
+  echo "  git config custom.defaultbranch origin/release53  # Set default to release53"
+  exit 0
+}
+
+# Handle help flag
+if [ "${1:-}" = "--help" ] || [ "${1:-}" = "-h" ]; then
+  print_help
+fi
+
+echo "Fetching all remotes..."
+git fetch --all
+
+default_branch=$(git config --get custom.defaultbranch || true)
+
+if [ -z "$default_branch" ]; then
+    default_branch="origin/main"
+    echo "No default branch configured, using $default_branch"
+else
+    echo "Using configured default: $default_branch"
+fi
+
+git checkout "$default_branch"

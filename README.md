@@ -19,6 +19,8 @@ Tools for exploring code history and understanding changes:
   modified each line matching a search pattern - perfect for code archaeology.
 - [git-diff-sed](doc/git-diff-sed.md) - **★** Applies sed transformations to the old version of a
   file before running git diff to ignore systematic changes like variable renames.
+- [git-diff-byte-count](doc/git-diff-byte-count.md) - Compares meaningful code size between
+  commits by stripping comments and whitespace before measuring — useful for validating refactors.
 - [git-branch-space-report](doc/git-branch-space-report.md) - Reports disk space used by each
   branch to identify storage-heavy branches.
 
@@ -35,10 +37,15 @@ Tools for fine-grained control over what gets committed:
 
 Tools for daily development tasks and project management:
 
+- [git-all](doc/git-all.md) - Run a git command across all repositories in the current directory.
+- [git-checkout-default](doc/git-checkout-default.md) - Fetch all remotes and checkout the configured
+  default branch.
 - [git-rebase-all](doc/git-rebase-all.md) - Generates rebase commands for all tip branches to keep
   them up-to-date with a base branch.
 - [watch-ci](doc/watch-ci.md) - Monitors CI status of a branch and provides desktop/audio
   notifications when builds complete.
+- [git-log-with-ci-status](doc/git-log-with-ci-status.md) - Shows recent git log with inline CI
+  status icons — a one-shot snapshot of which commits are passing or failing.
 - [listgits](doc/listgits.md) - Quickly lists all git repositories in your home directory.
 - [makeHumansTxt](doc/makeHumansTxt.md) - Generates a humans.txt file listing contributors
   ordered by commit count.
