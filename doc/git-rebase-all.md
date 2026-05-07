@@ -14,13 +14,13 @@ It's useful for keeping all active development branches up to date with the main
 ## Usage
 
 ```bash
-# Use automatic base branch detection, skip fully pushed branches
+# Use automatic upstream detection, skip fully pushed branches
 git rebase-all
 
 # Include branches that are fully pushed to their upstream
 git rebase-all --include-pushed
 
-# Specify a custom base branch
+# Specify a custom upstream
 git rebase-all main
 git rebase-all develop
 
@@ -31,11 +31,12 @@ git rebase-all --include-pushed develop
 ## Parameters
 
 - `--include-pushed`: Include branches that are fully synchronized with their upstream remote
-- `<base-branch>`: The base branch to rebase onto (default: auto-detected)
+- `<upstream>`: The branch to rebase onto (default: auto-detected)
+- `--help`, `-h`: Show help message and exit
 
-## Base Branch Detection
+## Upstream Detection
 
-If no base branch is specified, the script automatically searches for the first existing branch in
+If no upstream is specified, the script automatically searches for the first existing branch in
 this order:
 
 1. `develop`
@@ -54,6 +55,8 @@ git rebase 'develop' 'feature/login' || git rebase --abort
 git rebase 'develop' 'feature/dashboard' || git rebase --abort
 git rebase 'develop' 'bugfix/api-error' || git rebase --abort
 ```
+
+The first argument to each `git rebase` call is the `<upstream>` branch.
 
 ## Tip Branch Detection
 
