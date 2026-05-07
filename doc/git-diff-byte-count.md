@@ -21,7 +21,7 @@ counts and a total summary.
 ## Usage
 
 ```bash
-git-diff-byte-count [<commit>]
+git diff-byte-count [<commit>]
 ```
 
 ## Parameters
@@ -36,16 +36,16 @@ git-diff-byte-count [<commit>]
 
 ```bash
 # Compare against the previous commit (default)
-git-diff-byte-count
+git diff-byte-count
 
 # Compare against a named branch
-git-diff-byte-count main
+git diff-byte-count main
 
 # Compare the last 10 commits
-git-diff-byte-count HEAD~10
+git diff-byte-count HEAD~10
 
 # Compare against a specific commit
-git-diff-byte-count a1b2c3d4
+git diff-byte-count a1b2c3d4
 ```
 
 ## Supported File Types

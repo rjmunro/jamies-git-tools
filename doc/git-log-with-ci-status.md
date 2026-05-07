@@ -16,7 +16,7 @@ useful for a quick health check of a branch, or for finding the most recent gree
 ## Usage
 
 ```bash
-git-log-with-ci-status [options] [<branch>]
+git log-with-ci-status [options] [<branch>]
 ```
 
 ## Parameters
@@ -32,16 +32,16 @@ git-log-with-ci-status [options] [<branch>]
 
 ```bash
 # Check CI status on current branch
-git-log-with-ci-status
+git log-with-ci-status
 
 # Check a specific branch
-git-log-with-ci-status main
+git log-with-ci-status main
 
 # Show only the last 10 commits
-git-log-with-ci-status -n 10
+git log-with-ci-status -n 10
 
 # Check a remote tracking branch
-git-log-with-ci-status -n 5 origin/main
+git log-with-ci-status -n 5 origin/main
 ```
 
 ## Output Format
