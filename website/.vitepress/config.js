@@ -61,6 +61,7 @@ export default defineConfig({
         text: "🛠️ Development Workflow",
         collapsed: false,
         items: [
+          { text: "git-test-merge", link: "/tools/git-test-merge" },
           { text: "watch-ci", link: "/tools/watch-ci" },
           { text: "listgits", link: "/tools/listgits" },
           { text: "makeHumansTxt", link: "/tools/makeHumansTxt" },
