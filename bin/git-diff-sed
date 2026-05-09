@@ -26,6 +26,16 @@ fi
 # Shift the first two arguments (sed command and file path)
 shift 2
 
+# Check if --cached flag is present
+CACHED=false
+NEW_FILE_SOURCE="$FILE_PATH"
+for arg in "$@"; do
+    if [ "$arg" = "--cached" ] || [ "$arg" = "--staged" ]; then
+        CACHED=true
+        break
+    fi
+done
+
 # Check if the file exists in the repository
 if ! git rev-parse --quiet --verify HEAD:"$FILE_PATH" > /dev/null; then
     echo "Error: File '$FILE_PATH' not found in HEAD of the repository." >&2
@@ -35,8 +45,18 @@ fi
 # Build the temporary file for the "old" version
 OLD_FILE_CONTENT=$(git show HEAD:"$FILE_PATH" | sed -E "$SED_COMMAND")
 
-# Get the standard `git diff` formatting
-git diff --no-index \
-    <(echo "$OLD_FILE_CONTENT") \
-    "$FILE_PATH" \
-    "$@"
+# Get the "new" version depending on --cached flag
+if [ "$CACHED" = true ]; then
+    # Compare against staged version
+    NEW_FILE_CONTENT=$(git show :"$FILE_PATH")
+    git diff --no-index \
+        <(echo "$OLD_FILE_CONTENT") \
+        <(echo "$NEW_FILE_CONTENT") \
+        "$@"
+else
+    # Compare against working directory
+    git diff --no-index \
+        <(echo "$OLD_FILE_CONTENT") \
+        "$FILE_PATH" \
+        "$@"
+fi
