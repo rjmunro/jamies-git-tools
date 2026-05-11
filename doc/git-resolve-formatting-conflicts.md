@@ -22,13 +22,11 @@ This script streamlines this process by:
 5. Saving the resolved, formatted file back into your working directory
 6. Automatically staging the file with `git add` if there are no remaining conflicts
 7. If any formatter failed, reporting the path to a temp file containing the error output
-7. If any formatter failed, reporting the path to a temp file containing the error output
 
 ## Prerequisites
 
 Before running this script, ensure you have:
 
-- **Node.js andinstalled in your project or globally (the script detects it via `node_modules/.bin/prettier`, a global `prettier` command, or `npm list prettier`; a local config file is not required if using a shareable config package
 - **Prettier** installed in your project or globally (the script detects it via `node_modules/.bin/prettier`, a global `prettier` command, or `npm list prettier`; a local config file is not required if using a shareable config package)
 - **ESLint** configured for JavaScript/TypeScript files (optional, used for .js, .jsx, .ts, .tsx, .vue files)
 
