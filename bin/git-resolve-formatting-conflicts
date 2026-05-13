@@ -150,7 +150,7 @@ format_file() {
 
   # Apply formatters based on file type and detected configs
   case "$file_extension" in
-    js|jsx|ts|tsx|vue)
+    js|jsx|mjs|cjs|ts|tsx|vue)
       # ESLint for JavaScript/TypeScript files
       if [[ "$HAS_ESLINT" == "true" ]]; then
         if npx eslint --fix --quiet "$file_path" 2>>"$ERROR_LOG"; then
