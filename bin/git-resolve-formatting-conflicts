@@ -16,6 +16,10 @@
 # or zero if all commands in the pipeline exit successfully.
 set -euo pipefail
 
+# Create temporary file for error logging
+ERROR_LOG=$(mktemp)
+HAS_FAILURES=false
+
 REMOVE_INDENTATION=false
 RELATIVE=false
 file_globs=()
@@ -75,17 +79,35 @@ detect_formatters() {
   local has_black=false
   local has_rustfmt=false
 
-  # Check for Prettier config files
-  if [[ -f .prettierrc || -f .prettierrc.json || -f .prettierrc.js || -f .prettierrc.yml || -f .prettierrc.yaml || -f prettier.config.js ]] || grep -q '"prettier"' package.json 2>/dev/null; then
-    if command -v npx >/dev/null 2>&1 && npx prettier --version >/dev/null 2>&1; then
+  # Check for Prettier - look for config files OR if prettier is installed
+  # Check if prettier is available without triggering npx install prompts
+  local prettier_available=false
+  local prettier_cmd=""
+  if [[ -f node_modules/.bin/prettier ]]; then
+    prettier_available=true
+    prettier_cmd="node_modules/.bin/prettier"
+  elif command -v prettier >/dev/null 2>&1; then
+    prettier_available=true
+    prettier_cmd="prettier"
+  elif command -v npm >/dev/null 2>&1 && npm list prettier >/dev/null 2>&1; then
+    prettier_available=true
+    prettier_cmd="npx prettier"
+  fi
+
+  if [[ "$prettier_available" == "true" ]]; then
+    if [[ -f .prettierrc || -f .prettierrc.json || -f .prettierrc.js || -f .prettierrc.yml || -f .prettierrc.yaml || -f prettier.config.js ]] || grep -q '"prettier"' package.json 2>/dev/null; then
       has_prettier=true
       echo "  Detected: Prettier (config found)"
+    else
+      # Prettier is available but no local config found (possibly using shareable config)
+      has_prettier=true
+      echo "  Detected: Prettier (available, possibly using shareable config)"
     fi
   fi
 
   # Check for ESLint config files
   if [[ -f .eslintrc || -f .eslintrc.cjs || -f .eslintrc.js || -f .eslintrc.json || -f .eslintrc.yml || -f .eslintrc.yaml || -f eslint.config.js || -f eslint.config.mjs ]] || grep -q '"eslint"' package.json 2>/dev/null; then
-    if command -v npx >/dev/null 2>&1 && npx eslint --version >/dev/null 2>&1; then
+    if command -v npx >/dev/null 2>&1 && npx --no eslint --version >/dev/null 2>&1; then
       has_eslint=true
       echo "  Detected: ESLint (config found)"
     fi
@@ -107,6 +129,7 @@ detect_formatters() {
 
   # Export detected formatters
   export HAS_PRETTIER=$has_prettier
+  export PRETTIER_CMD=$prettier_cmd
   export HAS_ESLINT=$has_eslint
   export HAS_BLACK=$has_black
   export HAS_RUSTFMT=$has_rustfmt
@@ -127,59 +150,65 @@ format_file() {
 
   # Apply formatters based on file type and detected configs
   case "$file_extension" in
-    js|jsx|ts|tsx|vue)
+    js|jsx|mjs|cjs|ts|tsx|vue)
       # ESLint for JavaScript/TypeScript files
       if [[ "$HAS_ESLINT" == "true" ]]; then
-        if npx eslint --fix --quiet "$file_path" 2>/dev/null; then
+        if npx eslint --fix --quiet "$file_path" 2>>"$ERROR_LOG"; then
           echo "    ESLint --fix applied successfully"
           formatted=true
         else
           echo "    Warning: ESLint --fix failed for $file_path"
+          HAS_FAILURES=true
         fi
       fi
 
       # Prettier for these files (if available)
       if [[ "$HAS_PRETTIER" == "true" ]]; then
-        if npx prettier --write --loglevel silent "$file_path" 2>/dev/null; then
+        if $PRETTIER_CMD --write --loglevel silent "$file_path" 2>>"$ERROR_LOG"; then
           echo "    Prettier applied successfully"
           formatted=true
         else
           echo "    Warning: Prettier failed for $file_path"
+          HAS_FAILURES=true
         fi
       fi
       ;;
     py)
       # Black for Python files
       if [[ "$HAS_BLACK" == "true" ]]; then
-        if black --quiet "$file_path" 2>/dev/null; then
+        if black --quiet "$file_path" 2>>"$ERROR_LOG"; then
           echo "    Black applied successfully"
           formatted=true
         else
           echo "    Warning: Black failed for $file_path"
+          HAS_FAILURES=true
         fi
       elif [[ "$HAS_PRETTIER" == "true" ]]; then
         # Fallback to Prettier if Black not available
-        if npx prettier --write --loglevel silent "$file_path" 2>/dev/null; then
+        if $PRETTIER_CMD --write --loglevel silent "$file_path" 2>>"$ERROR_LOG"; then
           echo "    Prettier applied successfully"
           formatted=true
+        else
+          HAS_FAILURES=true
         fi
       fi
       ;;
     rs)
       # rustfmt for Rust files
       if [[ "$HAS_RUSTFMT" == "true" ]]; then
-        if rustfmt "$file_path" 2>/dev/null; then
+        if rustfmt "$file_path" 2>>"$ERROR_LOG"; then
           echo "    rustfmt applied successfully"
           formatted=true
         else
           echo "    Warning: rustfmt failed for $file_path"
+          HAS_FAILURES=true
         fi
       fi
       ;;
     *)
       # For other file types, try Prettier if available
       if [[ "$HAS_PRETTIER" == "true" ]]; then
-        if npx prettier --write --loglevel silent "$file_path" 2>/dev/null; then
+        if $PRETTIER_CMD --write --loglevel silent "$file_path" 2>>"$ERROR_LOG"; then
           echo "    Prettier applied successfully"
           formatted=true
         else
@@ -221,6 +250,7 @@ fi
 # Check if the 'conflicted_files' variable is empty.
 if [ -z "$conflicted_files" ]; then
   echo "No conflicted files found."
+  rm -f "$ERROR_LOG"
   exit 0 # Exit successfully if no conflicts are found.
 fi
 
@@ -279,3 +309,11 @@ done
 
 echo "✅ All formatting merge conflicts processed."
 echo "Review any files that still have conflicts and stage them manually."
+
+# Handle error log
+if [[ "$HAS_FAILURES" == "true" ]]; then
+  echo ""
+  echo "⚠️  Some formatters failed. Error details saved to: $ERROR_LOG"
+else
+  rm -f "$ERROR_LOG"
+fi
