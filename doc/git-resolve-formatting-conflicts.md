@@ -16,7 +16,7 @@ This script streamlines this process by:
 1. Identifying conflicted files (optionally filtered by file globs)
 2. Extracting the "base" (common ancestor), "ours" (current branch), and "theirs" (incoming branch)
    versions of each conflicted file
-3. Applying code formatting tools (Prettier and ESLint) to all three versions
+3. Applying code formatting tools (Prettier, ESLint, Black, rustfmt) to all three versions
 4. Performing a three-way merge on these _formatted_ versions, which typically resolves purely
    formatting-related differences automatically
 5. Saving the resolved, formatted file back into your working directory
@@ -25,18 +25,28 @@ This script streamlines this process by:
 
 ## Prerequisites
 
-Before running this script, ensure you have:
+All formatters are optional — the script detects which ones are available and silently skips any
+that are not installed. Install whichever apply to your project:
 
-- **Prettier** installed in your project or globally (the script detects it via `node_modules/.bin/prettier`, a global `prettier` command, or `npm list prettier`; a local config file is not required if using a shareable config package)
-- **ESLint** configured for JavaScript/TypeScript files (optional, used for .js, .jsx, .ts, .tsx, .vue files)
+- **Prettier**
+  - For all file types (Prettier will skip unsupported file types)
+  - Detected via `node_modules/.bin/prettier`, a global `prettier` command, or `npm list prettier`
+  - A local config file is not required if using a shareable config package
+  - Run as `prettier --write <file>`
+- **ESLint**
+  - For JavaScript, TypeScript, and Vue files (.js, .jsx, .ts, .tsx, .vue)
+  - Detected via a config file (`.eslintrc`, `eslint.config.js`, etc.) and `npx`
+  - Run as `npx eslint --fix <file>`
+- **Black**
+  - For Python files (.py)
+  - Detected via a `[tool.black]` section in `pyproject.toml` and the `black` command
+  - Run as `black <file>`
+- **rustfmt**
+  - For Rust files (.rs)
+  - Detected via `rustfmt.toml` or `.rustfmt.toml` and the `rustfmt` command
+  - Run as `rustfmt <file>`
 
-The script automatically detects and applies:
-
-- **ESLint --fix** for JavaScript, TypeScript, and Vue files (.js, .jsx, .ts, .tsx, .vue)
-- **Prettier --write** for all file types (Prettier will skip unsupported file types)
-
-You can use other code formatters by modifying the script - Pull requests are welcome to add support
-for more code formatting tools.
+Pull requests are welcome to add support for more code formatting tools.
 
 ## Usage
 
@@ -58,9 +68,6 @@ git resolve-formatting-conflicts "*.js" "src/**/*.ts"
 
 # Remove indentation after formatting (useful for structural conflicts)
 git resolve-formatting-conflicts --remove-indentation
-
-# Show file paths relative to current directory
-git resolve-formatting-conflicts --relative
 
 # Run from current directory (when config files are here, not in repo root)
 git resolve-formatting-conflicts --relative
