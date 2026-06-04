@@ -1,55 +1,65 @@
 # git-bisect-rebase
 
-A script that attempts to rebase the current branch onto a target branch, and if the rebase fails
-due to conflicts, uses `git bisect` to find the latest commit that can be successfully rebased onto.
+A script that attempts to rebase the current branch onto an upstream branch, and if the rebase fails
+due to conflicts, uses `git bisect` to find the latest commit that can be successfully rebased.
 
 ## Overview
 
-When rebasing a long-running feature branch onto a target branch (like `main` or `develop`),
+When rebasing a long-running feature branch onto an upstream branch (like `main` or `develop`),
 conflicts can arise that make the rebase difficult or impossible to complete. This script
 intelligently handles such situations by:
 
 1. First attempting a direct rebase
-2. If that fails, using `git bisect` to find the latest commit in your branch that can be
-   successfully rebased onto the target branch without conflicts
+2. If that fails, using `git bisect` to find the most recent commit in the upstream branch
+   onto which your branch can be successfully rebased without conflicts
 3. Performing the rebase up to that successful point
 4. Automatically handling uncommitted changes by stashing and restoring them
 
-Once you have found the latest commit that can be rebased cleanly, you can exammine the tree and see
-what specifically caused the conflict. You can rebase try resolving the conflicts at that point for
+Once you have found the latest commit that can be rebased cleanly, you can examine the tree and see
+what specifically caused the conflict. You can try resolving the conflicts at that point for
 the one single issue.
 
 ## Usage
 
 ```bash
-git bisect-rebase <target-branch>
+git bisect-rebase [<upstream> [<branch>]]
 ```
+
+## Options
+
+- `--help`, `-h`: Show help message and exit
 
 ## Parameters
 
-- `<target-branch>`: The branch to rebase onto (e.g., `main`, `develop`, `origin/main`)
+- `<upstream>`: The branch to rebase onto (e.g., `main`, `develop`, `origin/main`)
+- `<branch>`: Optional. The branch to rebase. If omitted, uses the current branch.
 
 ## How It Works
 
 ### Phase 1: Direct Rebase Attempt
 
-1. Stashes any uncommitted changes (if present)
-2. Attempts to rebase the current branch directly onto the target branch
-3. If successful, restores stashed changes and exits
+1. If a branch is specified, checks it out first
+2. Stashes any uncommitted changes (if present)
+3. Attempts to rebase the current branch directly onto the upstream branch
+4. If successful, restores stashed changes and exits
 
 ### Phase 2: Bisect-Assisted Rebase (if direct rebase fails)
 
 1. Aborts the failed rebase
-2. Finds the common ancestor between the current branch and target branch
-3. Uses `git bisect` to binary search for the latest commit that can be rebased onto successfully
+2. Finds the common ancestor between the current branch and upstream branch
+3. Uses `git bisect` to binary search for the latest commit that can be rebased successfully
 4. Tests each commit by attempting a rebase (using an internal test function)
 5. Once the optimal commit is found, performs the rebase to that point
+6. Returns you to your original branch and suggests next steps
 
 ## Examples
 
 ```bash
 # Rebase current feature branch onto main
 git bisect-rebase main
+
+# Rebase a specific branch onto main
+git bisect-rebase main feature/new-api
 
 # Rebase onto a remote branch
 git bisect-rebase origin/develop
@@ -84,6 +94,7 @@ The script uses an internal test function that:
 
 - **Uncommitted changes**: The script automatically stashes and restores uncommitted changes
 - **Bisect cleanup**: After completion, run `git bisect reset` to clean up the bisect state
+- **Next steps**: After bisect completes, the script suggests the command to retry rebasing from the first problematic commit
 - **Partial success**: Even if not all commits can be rebased, you'll get as many as possible
 
 ## Workflow Example
@@ -94,18 +105,21 @@ git checkout feature/new-api
 git bisect-rebase main
 ```
 
-You can then try to rebase onto the first unsuccessful commit found by the bisect:
+If bisect finds problematic commits, the script will suggest:
+> To continue the rebase and start resolving the conflicts, use:
+> > git rebase refs/bisect/bad
 
 ```bash
-git rebase bisect-bad
+git rebase refs/bisect/bad
 ```
 
-This will hopefully present you with a simpler conflict to resolve. Once you have resolved any
+This will attempt to rebase onto the first unmergeeable commit, hopefully present you with a simpler conflict to resolve. Once you have resolved any
 conflicts, you can try the rebase again from that point.
 
 ## Cleanup
 
-After the script completes, make sure to clean up:
+After you have finished resolving conflicts with `git rebase refs/bisect/bad`, clean up the
+bisect state:
 
 ```bash
 git bisect reset
